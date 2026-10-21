@@ -10,6 +10,7 @@ VERSION = 1
 
 TYPE_DATA = 1
 TYPE_END = 2
+TYPE_ACK = 3
 
 HEADER_FORMAT = "!4sBBIQH32s"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
@@ -29,7 +30,7 @@ class Packet:
 
 
 def _checksum_prefix(packet_type, sequence_number, timestamp_ns, payload):
-    if packet_type not in (TYPE_DATA, TYPE_END):
+    if packet_type not in (TYPE_DATA, TYPE_END, TYPE_ACK):
         raise PacketError("Unsupported packet type")
 
     if not 0 <= sequence_number <= 0xFFFFFFFF:
