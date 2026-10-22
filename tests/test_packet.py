@@ -14,11 +14,13 @@ from src.packet import (
     HEADER_SIZE,
     MAGIC,
     MAX_PAYLOAD_SIZE,
+    TYPE_ACK,
     TYPE_DATA,
     TYPE_END,
     VERSION,
     Packet,
     PacketError,
+    create_ack_packet,
     create_packet,
     decode_end_payload,
     decode_packet,
@@ -238,3 +240,96 @@ class TestEndPayload:
     def test_negative_count(self):
         with pytest.raises(PacketError):
             encode_end_payload(-1)
+
+
+# ===================================================================
+# ACK packet tests
+# ===================================================================
+
+class TestAckPacket:
+    """Tests for TYPE_ACK packets, creation, encoding, and validation."""
+
+    def test_create_ack_packet_helper(self):
+        ack = create_ack_packet(sequence_number=5)
+        assert ack.packet_type == TYPE_ACK
+        assert ack.sequence_number == 5
+        assert ack.payload == b""
+        assert isinstance(ack.timestamp_ns, int)
+        assert ack.timestamp_ns > 0
+
+    def test_create_ack_via_create_packet(self):
+        ack = create_packet(TYPE_ACK, 10, payload=b"")
+        assert ack.packet_type == TYPE_ACK
+        assert ack.sequence_number == 10
+        assert ack.payload == b""
+
+    def test_ack_explicit_timestamp(self):
+        ts = 1234567890123456
+        ack = create_ack_packet(7, timestamp_ns=ts)
+        assert ack.timestamp_ns == ts
+
+    def test_ack_packet_round_trip(self):
+        ack = create_ack_packet(42, timestamp_ns=999999999)
+        encoded = encode_packet(ack)
+
+        # Wire size must be exactly 52 bytes (HEADER_SIZE with 0 payload)
+        assert len(encoded) == HEADER_SIZE
+
+        decoded = decode_packet(encoded)
+        assert decoded.packet_type == TYPE_ACK
+        assert decoded.sequence_number == 42
+        assert decoded.timestamp_ns == 999999999
+        assert decoded.payload == b""
+
+    def test_ack_checksum_validation(self):
+        ack = create_ack_packet(15)
+        encoded = encode_packet(ack)
+        assert verify_checksum(encoded) is True
+
+        # Corrupt sequence number in header
+        corrupted = bytearray(encoded)
+        corrupted[9] ^= 0xFF
+        assert verify_checksum(bytes(corrupted)) is False
+        with pytest.raises(PacketError, match="Checksum verification failed"):
+            decode_packet(bytes(corrupted))
+
+    def test_ack_with_non_empty_payload_fails_creation(self):
+        with pytest.raises(PacketError, match="ACK packet payload must be empty"):
+            create_packet(TYPE_ACK, 0, payload=b"unexpected")
+
+    def test_ack_with_payload_on_wire_fails_decode(self):
+        # Craft an ACK datagram with payload length > 0
+        ack = create_packet(TYPE_DATA, 5, payload=b"foo")
+        encoded = bytearray(encode_packet(ack))
+        # Change type from TYPE_DATA (1) to TYPE_ACK (3)
+        encoded[5] = TYPE_ACK
+        with pytest.raises(PacketError, match="ACK datagram payload length must be 0"):
+            decode_packet(bytes(encoded))
+
+    def test_ack_sequence_boundaries(self):
+        # 0 is valid
+        ack0 = create_ack_packet(0)
+        assert ack0.sequence_number == 0
+
+        # 2^32 - 1 is valid
+        max_seq = 0xFFFFFFFF
+        ack_max = create_ack_packet(max_seq)
+        assert ack_max.sequence_number == max_seq
+
+        # Negative seq fails
+        with pytest.raises(PacketError, match="sequence number"):
+            create_ack_packet(-1)
+
+        # Overflow seq fails
+        with pytest.raises(PacketError, match="sequence number"):
+            create_ack_packet(0x1_0000_0000)
+
+    def test_ack_for_end_packet(self):
+        # Acknowledging an END packet which carries total_packets
+        total_packets = 250
+        ack = create_ack_packet(sequence_number=total_packets)
+        encoded = encode_packet(ack)
+        decoded = decode_packet(encoded)
+        assert decoded.packet_type == TYPE_ACK
+        assert decoded.sequence_number == total_packets
+        assert decoded.payload == b""

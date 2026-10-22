@@ -11,7 +11,7 @@ Binary wire format (network byte order, big-endian):
   ------  ----  -----
    0       4    Magic bytes  ("AUDP")
    4       1    Protocol version (1)
-   5       1    Packet type  (1 = DATA, 2 = END)
+   5       1    Packet type  (1 = DATA, 2 = END, 3 = ACK)
    6       4    Sequence number (uint32)
   10       8    Timestamp in nanoseconds (uint64, monotonic clock)
   18       2    Payload length (uint16, 0–MAX_PAYLOAD_SIZE)
@@ -34,6 +34,12 @@ END  (2): Signals the end of the stream.
           payload encodes the total DATA packet count as a 4-byte
           big-endian unsigned integer, enabling the receiver to verify
           completeness without requiring a separate out-of-band channel.
+
+ACK  (3): Acknowledges receipt of a packet.
+          sequence_number specifies the acknowledged sequence number
+          (matching the DATA chunk index or END sequence number).
+          timestamp_ns echoes or records the timestamp for RTT calculation.
+          payload is empty (0 bytes) in this version.
 
 Checksum
 --------
@@ -72,7 +78,10 @@ TYPE_DATA: int = 1
 TYPE_END: int = 2
 """Packet type for the end-of-stream marker."""
 
-_VALID_TYPES = frozenset({TYPE_DATA, TYPE_END})
+TYPE_ACK: int = 3
+"""Packet type for acknowledgments."""
+
+_VALID_TYPES = frozenset({TYPE_DATA, TYPE_END, TYPE_ACK})
 
 # struct format: magic(4s) version(B) type(B) seq(I) ts(Q) len(H) sha256(32s)
 HEADER_FORMAT: str = "!4sBBIQH32s"
@@ -134,7 +143,7 @@ def _validate_fields(packet_type, sequence_number, timestamp_ns, payload):
     if packet_type not in _VALID_TYPES:
         raise PacketError(
             f"Unsupported packet type: {packet_type!r}. "
-            f"Valid types are DATA ({TYPE_DATA}) and END ({TYPE_END})."
+            f"Valid types are DATA ({TYPE_DATA}), END ({TYPE_END}), and ACK ({TYPE_ACK})."
         )
 
     if not isinstance(sequence_number, int) or not 0 <= sequence_number <= 0xFFFFFFFF:
@@ -152,6 +161,11 @@ def _validate_fields(packet_type, sequence_number, timestamp_ns, payload):
     if not isinstance(payload, (bytes, bytearray)):
         raise PacketError(
             f"Payload must be bytes, got {type(payload).__name__}."
+        )
+
+    if packet_type == TYPE_ACK and len(payload) != 0:
+        raise PacketError(
+            f"ACK packet payload must be empty, got {len(payload)} bytes."
         )
 
     if len(payload) > MAX_PAYLOAD_SIZE:
@@ -177,6 +191,30 @@ def _checksum_input(packet_type, sequence_number, timestamp_ns, payload):
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
+def create_ack_packet(
+    sequence_number,
+    timestamp_ns=None,
+):
+    """Create a validated ``Packet`` of type ``TYPE_ACK`` with empty payload.
+
+    Parameters:
+        sequence_number: Acknowledged sequence number (chunk index or END count).
+        timestamp_ns:    Timestamp in nanoseconds; auto-generated if *None*.
+
+    Returns:
+        A ``Packet`` instance.
+
+    Raises:
+        PacketError: If *sequence_number* or *timestamp_ns* is invalid.
+    """
+    return create_packet(
+        packet_type=TYPE_ACK,
+        sequence_number=sequence_number,
+        payload=b"",
+        timestamp_ns=timestamp_ns,
+    )
+
 
 def create_packet(
     packet_type,
@@ -301,6 +339,11 @@ def decode_packet(data):
     if packet_type not in _VALID_TYPES:
         raise PacketError(
             f"Unsupported packet type: {packet_type}."
+        )
+
+    if packet_type == TYPE_ACK and payload_length != 0:
+        raise PacketError(
+            f"ACK datagram payload length must be 0, got {payload_length}."
         )
 
     if payload_length > MAX_PAYLOAD_SIZE:
