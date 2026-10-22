@@ -254,15 +254,15 @@ adaptive-udp-streaming/
 
 **Current Status:** 🟡 In Development
 
-- [ ] UDP communication
-- [ ] Custom packet format
-- [ ] Reliability mechanism
-- [ ] RTT measurement
-- [ ] Network emulator
-- [ ] Adaptive rate control
-- [ ] Testing
-- [ ] Performance experiments
-- [ ] Final documentation
+- [x] UDP communication
+- [x] Custom packet format
+- [x] Reliability mechanism
+- [x] RTT measurement
+- [x] Network emulator
+- [x] Adaptive rate control
+- [x] Testing
+- [x] Performance experiments
+- [x] Final documentation
 
 ---
 
