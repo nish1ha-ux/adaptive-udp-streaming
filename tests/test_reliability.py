@@ -293,12 +293,17 @@ class TestStopAndWaitARQ:
         clock = MockClock(100.0)
         arq = StopAndWaitARQ(clock=clock)
         assert not arq.check_timeout(now=100.0)
+        assert arq.remaining_time_to_timeout(now=100.0) == pytest.approx(0.0)
 
         arq.start_packet(0, now=100.0)  # RTO is 1.0s
         assert not arq.check_timeout(now=100.5)
+        assert arq.remaining_time_to_timeout(now=100.5) == pytest.approx(0.5)
         assert not arq.check_timeout(now=100.99)
+        assert arq.remaining_time_to_timeout(now=100.99) == pytest.approx(0.01)
         assert arq.check_timeout(now=101.0)
+        assert arq.remaining_time_to_timeout(now=101.0) == pytest.approx(0.0)
         assert arq.check_timeout(now=101.5)
+        assert arq.remaining_time_to_timeout(now=101.5) == pytest.approx(0.0)
 
     def test_handle_timeout_backs_off_rto_and_increments_retries(self):
         clock = MockClock(100.0)
@@ -401,13 +406,25 @@ class TestStopAndWaitReceiver:
         assert ack == 0          # But re-send ACK 0 so sender unblocks!
         assert rec.expected_seq == 1
 
-    def test_out_of_order_future_packet(self):
+    def test_out_of_order_future_packet_does_not_ack_zero(self):
         rec = StopAndWaitReceiver()
-        # Packet 2 arrives when expecting 0
+        # Packet 2 arrives when expecting 0: must NOT acknowledge packet 0!
         deliver, ack = rec.process_packet(2)
         assert deliver is False
-        assert ack == 0
+        assert ack is None
         assert rec.expected_seq == 0
+
+    def test_out_of_order_packet_with_previous_packets(self):
+        rec = StopAndWaitReceiver()
+        rec.process_packet(0)
+        rec.process_packet(1)
+        assert rec.expected_seq == 2
+
+        # Packet 4 arrives when expecting 2: re-ack packet 1 (last valid received)
+        deliver, ack = rec.process_packet(4)
+        assert deliver is False
+        assert ack == 1
+        assert rec.expected_seq == 2
 
 
 # ===================================================================

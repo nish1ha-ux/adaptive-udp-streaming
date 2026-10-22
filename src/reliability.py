@@ -274,7 +274,7 @@ class StopAndWaitARQ:
         self._current_seq = None
         self._send_time = None
         self._timer_start = None
-        self._retransmit_count = 0
+        # Retain _retransmit_count for post-completion inspection until next start_packet
         self._is_retransmitted = False
         return True
 
@@ -324,6 +324,17 @@ class StopAndWaitARQ:
         self.rtt_estimator.backoff()
         return self._retransmit_count
 
+    def remaining_time_to_timeout(self, now: Optional[float] = None) -> float:
+        """Return the seconds remaining until the current in-flight packet times out.
+
+        Returns 0.0 if no packet is in flight or if already timed out.
+        """
+        if not self._in_flight or self._timer_start is None:
+            return 0.0
+        t = float(now if now is not None else self.clock())
+        elapsed = t - self._timer_start
+        return max(0.0, self.rto - elapsed)
+
 
 # ---------------------------------------------------------------------------
 # Stop-and-Wait Receiver Helper
@@ -341,17 +352,18 @@ class StopAndWaitReceiver:
             raise ValueError(f"initial_expected_seq must be non-negative integer, got {initial_expected_seq!r}")
         self.expected_seq: int = initial_expected_seq
 
-    def process_packet(self, sequence_number: int) -> Tuple[bool, int]:
+    def process_packet(self, sequence_number: int) -> Tuple[bool, Optional[int]]:
         """Process an incoming DATA packet sequence number.
 
         Parameters:
             sequence_number: Sequence number of received packet.
 
         Returns:
-            A tuple of (should_deliver: bool, ack_to_send: int).
+            A tuple of (should_deliver: bool, ack_to_send: Optional[int]).
             - If matching expected: (True, sequence_number) and increments expected.
             - If duplicate (< expected): (False, sequence_number) to re-ack lost ACK.
-            - If unexpected future (> expected): (False, expected - 1 if expected > 0 else 0).
+            - If unexpected future (> expected): (False, expected - 1 if expected > 0 else None).
+              Specifically, does NOT return 0 when sequence 0 has not yet been received.
         """
         if sequence_number == self.expected_seq:
             ack = self.expected_seq
@@ -361,6 +373,7 @@ class StopAndWaitReceiver:
             # Duplicate DATA packet; re-acknowledge it so sender can advance
             return (False, sequence_number)
         else:
-            # Out of order packet; cannot accept yet in Stop-and-Wait
-            last_valid = self.expected_seq - 1 if self.expected_seq > 0 else 0
+            # Out of order packet; cannot accept yet in Stop-and-Wait.
+            # Do NOT send ACK(0) if sequence 0 has not been received.
+            last_valid = self.expected_seq - 1 if self.expected_seq > 0 else None
             return (False, last_valid)

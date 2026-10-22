@@ -2,36 +2,25 @@
 Adaptive UDP Streaming — UDP Receiver
 ======================================
 
-Author: Nishtha Bhushan
+Authors: Nishtha Bhushan, Prakhar Manish Srivastava
 Module: src/receiver.py
 
-Listens on a UDP socket, receives DATA and END packets, verifies
-checksums, reassembles the file in sequence order, and writes the
-result to disk.
+Listens for incoming sequenced DATA packets over UDP, reassembles them
+in sequence order, writes the reconstructed file to disk, and verifies
+its SHA-256 checksum.
 
 Usage (command line)::
 
-    python -m src.receiver --host 127.0.0.1 --port 5005 --output out.bin
+    python -m src.receiver --host 127.0.0.1 --port 5005 --output received.bin
+    python -m src.receiver --host 127.0.0.1 --port 5005 --output received.bin --arq stop-and-wait
 
-Completion logic
-----------------
-UDP does not guarantee ordering, so the END packet may arrive before
-all DATA packets.  The receiver uses the total-DATA-packet count
-embedded in the END payload (see ``packet.encode_end_payload``) to
-determine when every chunk has been received.
-
-After receiving the END packet the receiver continues to listen for
-late-arriving DATA packets until either all expected packets have
-been received or a configurable *post-END timeout* elapses.
-
-If the timeout expires and packets are still missing, the receiver
-raises ``RuntimeError`` listing the missing sequence numbers.
-
-Limitations
------------
-* The receiver does not send ACKs or request retransmissions.
-  Those responsibilities belong to Prakhar's reliability module.
-* The receiver buffers all payloads in memory before writing.
+Reliability Features (Prakhar):
+* Stop-and-Wait ARQ: sends an ACK datagram for each valid DATA and END packet.
+* Safe duplicate handling: resends ACKs for duplicates without corrupting payload.
+* Safe out-of-order handling: never emits an invalid ACK(0) before packet 0 arrives.
+* Reliable END handshake: sends ACK for END upon complete transfer acceptance.
+* Linger policy: lingers briefly after completion to catch lost END ACK retransmissions.
+* Fully backward compatible with unmanaged UDP blast mode (`--arq none`).
 """
 
 import argparse
@@ -39,23 +28,23 @@ import hashlib
 import logging
 import socket
 import sys
+import time
 from pathlib import Path
 
 from src.packet import (
+    MAX_DATAGRAM_SIZE,
+    TYPE_ACK,
     TYPE_DATA,
     TYPE_END,
-    HEADER_SIZE,
-    MAX_PAYLOAD_SIZE,
     PacketError,
-    decode_packet,
+    create_ack_packet,
     decode_end_payload,
+    decode_packet,
+    encode_packet,
 )
+from src.reliability import StopAndWaitReceiver
 
 logger = logging.getLogger(__name__)
-
-MAX_DATAGRAM_SIZE: int = HEADER_SIZE + MAX_PAYLOAD_SIZE
-"""Buffer size for ``recvfrom``.  Large enough for the biggest valid
-datagram."""
 
 
 def receive_file(
@@ -64,46 +53,57 @@ def receive_file(
     port=5005,
     timeout=30.0,
     post_end_timeout=5.0,
+    arq="stop-and-wait",
+    linger_timeout=1.0,
 ):
-    """Receive UDP packets and reconstruct the original file.
+    """Listen for incoming packets, send ACKs, and reconstruct the file.
 
     Parameters:
-        output_path:      Where to write the reconstructed file.
+        output_path:      Path where the reconstructed file will be saved.
         host:             Local address to bind.
         port:             Local UDP port to bind.
-        timeout:          Seconds to wait for *any* packet before giving
-                          up entirely.
-        post_end_timeout: After receiving END, how many extra seconds to
-                          wait for delayed DATA packets before finalising.
+        timeout:          Seconds to wait for packets before giving up.
+        post_end_timeout: Seconds to wait after END for delayed DATA packets.
+        arq:              Reliability mode: 'stop-and-wait' (default) or 'none'.
+        linger_timeout:   Seconds to linger after completion to resend lost END ACKs.
 
     Returns:
         dict with keys ``total_bytes``, ``total_packets``,
         ``duplicates``, ``sha256``.
 
     Raises:
-        ValueError:    If timeout values are invalid.
+        ValueError:    If timeout values or arq mode are invalid.
         TimeoutError:  If no packets arrive within *timeout*.
-        RuntimeError:  If the stream cannot be fully reconstructed
-                       (missing packets).
+        RuntimeError:  If the stream cannot be fully reconstructed.
     """
     if timeout <= 0:
-        raise ValueError(
-            f"Timeout must be positive, got {timeout!r}."
-        )
+        raise ValueError(f"Timeout must be positive, got {timeout!r}.")
     if post_end_timeout < 0:
-        raise ValueError(
-            f"Post-END timeout cannot be negative, got {post_end_timeout!r}."
-        )
+        raise ValueError(f"Post-END timeout cannot be negative, got {post_end_timeout!r}.")
+    if linger_timeout < 0:
+        raise ValueError(f"Linger timeout cannot be negative, got {linger_timeout!r}.")
+    if arq not in ("stop-and-wait", "none"):
+        raise ValueError(f"Unsupported ARQ mode: {arq!r}. Valid modes are 'stop-and-wait' and 'none'.")
 
     received: dict[int, bytes] = {}
     duplicates: int = 0
     end_received: bool = False
-    expected_packets: int | None = None  # Set when END arrives.
+    expected_packets: int | None = None
+    last_sender_address = None
+
+    receiver_arq = StopAndWaitReceiver() if arq == "stop-and-wait" else None
 
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        # On Windows, disable WSAECONNRESET on UDP socket to prevent ICMP Port Unreachable
+        # from disrupting subsequent recvfrom calls.
+        if hasattr(socket, "SIO_UDP_CONNRESET"):
+            try:
+                sock.ioctl(socket.SIO_UDP_CONNRESET, False)
+            except OSError:
+                pass
         sock.settimeout(timeout)
         sock.bind((host, port))
-        logger.info("Listening on %s:%d (timeout=%.1fs)", host, port, timeout)
+        logger.info("Listening on %s:%d (timeout=%.1fs, ARQ=%s)", host, port, timeout, arq)
 
         while True:
             # Check completion: END received and all DATA packets present.
@@ -112,134 +112,174 @@ def receive_file(
                 and expected_packets is not None
                 and len(received) >= expected_packets
             ):
-                logger.info(
-                    "All %d DATA packets received — stream complete.",
-                    expected_packets,
-                )
+                logger.info("All %d DATA packets received — stream complete.", expected_packets)
                 break
 
             try:
                 data, address = sock.recvfrom(MAX_DATAGRAM_SIZE + 64)
+                last_sender_address = address
             except socket.timeout:
                 if end_received and expected_packets is not None:
                     # Post-END timeout expired; finalise with what we have.
                     break
                 raise TimeoutError(
                     f"Timed out after {timeout}s waiting for packets. "
-                    "Ensure the sender is running and targeting the "
-                    f"correct host/port ({host}:{port})."
+                    f"Ensure the sender is running and targeting {host}:{port}."
                 )
+            except ConnectionResetError:
+                # On Windows, Winsock raises ConnectionResetError (WSAECONNRESET 10054) on recvfrom
+                # when a previously sent UDP packet (e.g. an ACK) received an ICMP Port Unreachable.
+                logger.debug("Received ICMP Port Unreachable (ConnectionResetError); ignoring.")
+                continue
 
-            # Attempt to decode.
+            # Attempt to decode datagram safely.
             try:
                 pkt = decode_packet(data)
             except PacketError as exc:
-                logger.warning(
-                    "Ignored invalid packet from %s: %s", address, exc,
-                )
+                logger.warning("Ignored invalid packet from %s: %s", address, exc)
                 continue
 
             # ---- DATA ----
             if pkt.packet_type == TYPE_DATA:
                 if pkt.sequence_number in received:
                     duplicates += 1
-                    logger.debug(
-                        "Duplicate DATA seq=%d from %s (ignored)",
-                        pkt.sequence_number, address,
-                    )
+                    logger.debug("Duplicate DATA seq=%d from %s (ignored, resending ACK)", pkt.sequence_number, address)
+                    if arq == "stop-and-wait":
+                        ack_pkt = create_ack_packet(pkt.sequence_number, timestamp_ns=pkt.timestamp_ns)
+                        sock.sendto(encode_packet(ack_pkt), address)
                     continue
 
-                # If we already know the expected count, reject out-of-range.
-                if (
-                    expected_packets is not None
-                    and pkt.sequence_number >= expected_packets
-                ):
+                # If total expected is known, reject out-of-range packets.
+                if expected_packets is not None and pkt.sequence_number >= expected_packets:
                     logger.warning(
                         "DATA seq=%d out of range (expected 0–%d) — ignored.",
                         pkt.sequence_number, expected_packets - 1,
                     )
                     continue
 
+                # Buffer the payload.
                 received[pkt.sequence_number] = pkt.payload
+
+                # Process through receiver ARQ helper.
+                if arq == "stop-and-wait" and receiver_arq is not None:
+                    deliver, ack_to_send = receiver_arq.process_packet(pkt.sequence_number)
+                    if ack_to_send is not None:
+                        ack_pkt = create_ack_packet(ack_to_send, timestamp_ns=pkt.timestamp_ns)
+                        sock.sendto(encode_packet(ack_pkt), address)
+                        logger.debug("Sent ACK seq=%d to %s", ack_to_send, address)
+                elif arq == "none":
+                    pass
+
                 logger.info(
-                    "DATA seq=%d  %d bytes  (buffered %d)",
+                    "DATA seq=%d %d bytes (buffered %d)",
                     pkt.sequence_number, len(pkt.payload), len(received),
                 )
+
+                # If END arrived earlier, check if stream is now complete and send END ACK.
+                if end_received and expected_packets is not None and len(received) >= expected_packets:
+                    if arq == "stop-and-wait":
+                        end_ack = create_ack_packet(expected_packets, timestamp_ns=pkt.timestamp_ns)
+                        sock.sendto(encode_packet(end_ack), address)
+                        logger.info("Sent deferred ACK for END seq=%d to %s", expected_packets, address)
+                    break
 
             # ---- END ----
             elif pkt.packet_type == TYPE_END:
                 if end_received:
-                    logger.debug("Duplicate END packet (ignored).")
+                    logger.debug("Duplicate END packet received from %s.", address)
+                    if (
+                        arq == "stop-and-wait"
+                        and expected_packets is not None
+                        and len(received) >= expected_packets
+                    ):
+                        end_ack = create_ack_packet(pkt.sequence_number, timestamp_ns=pkt.timestamp_ns)
+                        sock.sendto(encode_packet(end_ack), address)
+                        logger.debug("Resent ACK for duplicate END seq=%d to %s", pkt.sequence_number, address)
                     continue
 
                 end_received = True
 
-                # Extract total DATA packet count from END payload.
                 try:
                     expected_packets = decode_end_payload(pkt.payload)
                 except PacketError:
-                    # Fallback: use sequence_number as the count.
                     expected_packets = pkt.sequence_number
-                    logger.warning(
-                        "END payload could not be decoded; using "
-                        "sequence_number=%d as expected count.",
-                        expected_packets,
-                    )
+                    logger.warning("END payload decode failed; using sequence_number=%d", expected_packets)
 
-                logger.info(
-                    "END received — expecting %d DATA packets "
-                    "(have %d so far).",
-                    expected_packets, len(received),
-                )
+                logger.info("END received — expecting %d DATA packets (have %d so far).", expected_packets, len(received))
 
-                # If packets are still missing, switch to a shorter
-                # post-END timeout so we don't wait forever.
-                if len(received) < expected_packets and post_end_timeout > 0:
-                    sock.settimeout(post_end_timeout)
+                if len(received) >= expected_packets:
+                    # All DATA packets already received; acknowledge END immediately.
+                    if arq == "stop-and-wait":
+                        end_ack = create_ack_packet(pkt.sequence_number, timestamp_ns=pkt.timestamp_ns)
+                        sock.sendto(encode_packet(end_ack), address)
+                        logger.info("Sent ACK for END packet (seq=%d) to %s", pkt.sequence_number, address)
+                    break
+                else:
+                    # Missing packets: switch to shorter post-END timeout to await retransmissions.
+                    if post_end_timeout > 0:
+                        sock.settimeout(post_end_timeout)
 
-    # --- Reconstruction ---------------------------------------------------
+            # ---- OTHER (e.g. unexpected ACK on receiver) ----
+            else:
+                logger.debug("Ignored unexpected packet type %d from %s", pkt.packet_type, address)
 
-    # Handle the empty-file case (0 DATA packets expected).
-    if expected_packets is None:
-        # END never arrived — infer count from what we received.
-        if received:
-            expected_packets = max(received.keys()) + 1
-            logger.warning(
-                "END packet never received. Inferring %d expected "
-                "packets from highest sequence number.",
-                expected_packets,
+        # --- Reconstruction ---------------------------------------------------
+        if expected_packets is None:
+            if received:
+                expected_packets = max(received.keys()) + 1
+            else:
+                expected_packets = 0
+
+        missing = [seq for seq in range(expected_packets) if seq not in received]
+
+        if missing:
+            raise RuntimeError(
+                f"Cannot reconstruct file: {len(missing)} of {expected_packets} DATA packet(s) missing. "
+                f"Missing sequence numbers: {missing}"
             )
-        else:
-            expected_packets = 0
 
-    missing = [
-        seq for seq in range(expected_packets)
-        if seq not in received
-    ]
+        # Reassemble in sequence order.
+        reconstructed = b"".join(received[seq] for seq in range(expected_packets))
 
-    if missing:
-        raise RuntimeError(
-            f"Cannot reconstruct file: {len(missing)} of "
-            f"{expected_packets} DATA packet(s) missing. "
-            f"Missing sequence numbers: {missing}"
-        )
+        # Write to disk safely.
+        destination = Path(output_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(reconstructed)
 
-    # Reassemble in sequence order.
-    reconstructed = b"".join(
-        received[seq] for seq in range(expected_packets)
-    )
+        file_hash = hashlib.sha256(reconstructed).hexdigest()
 
-    # Write to disk safely.
-    destination = Path(output_path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_bytes(reconstructed)
+        logger.info("Saved: %s (%d bytes)", destination, len(reconstructed))
+        logger.info("SHA-256: %s", file_hash)
+        if duplicates:
+            logger.info("Duplicates ignored: %d", duplicates)
 
-    file_hash = hashlib.sha256(reconstructed).hexdigest()
-
-    logger.info("Saved: %s (%d bytes)", destination, len(reconstructed))
-    logger.info("SHA-256: %s", file_hash)
-    if duplicates:
-        logger.info("Duplicates ignored: %d", duplicates)
+        # --- Linger Policy ----------------------------------------------------
+        # Linger briefly to absorb retransmitted END packets in case final ACK was dropped.
+        if (
+            arq == "stop-and-wait"
+            and linger_timeout > 0
+            and last_sender_address is not None
+            and expected_packets is not None
+        ):
+            logger.debug("Entering linger state for %.2fs", linger_timeout)
+            linger_end = time.monotonic() + linger_timeout
+            while time.monotonic() < linger_end:
+                rem_linger = max(0.001, linger_end - time.monotonic())
+                sock.settimeout(rem_linger)
+                try:
+                    ldata, laddr = sock.recvfrom(MAX_DATAGRAM_SIZE + 64)
+                    try:
+                        lpkt = decode_packet(ldata)
+                        if lpkt.packet_type == TYPE_END or (
+                            lpkt.packet_type == TYPE_DATA and lpkt.sequence_number in received
+                        ):
+                            lack = create_ack_packet(lpkt.sequence_number, timestamp_ns=lpkt.timestamp_ns)
+                            sock.sendto(encode_packet(lack), laddr)
+                            logger.debug("Linger: resent ACK seq=%d to %s", lpkt.sequence_number, laddr)
+                    except PacketError:
+                        pass
+                except (socket.timeout, OSError):
+                    break
 
     return {
         "total_bytes": len(reconstructed),
@@ -279,6 +319,14 @@ def main():
         "--post-end-timeout", type=float, default=5.0,
         help="Extra seconds to wait after END for delayed DATA (default: 5)",
     )
+    parser.add_argument(
+        "--arq", choices=["stop-and-wait", "none"], default="stop-and-wait",
+        help="Reliability mechanism (default: stop-and-wait)",
+    )
+    parser.add_argument(
+        "--linger-timeout", type=float, default=1.0,
+        help="Seconds to linger after completion for lost END ACKs (default: 1.0)",
+    )
 
     args = parser.parse_args()
 
@@ -289,6 +337,8 @@ def main():
             args.port,
             args.timeout,
             args.post_end_timeout,
+            arq=args.arq,
+            linger_timeout=args.linger_timeout,
         )
     except (ValueError, TimeoutError, RuntimeError) as exc:
         logger.error("%s", exc)
