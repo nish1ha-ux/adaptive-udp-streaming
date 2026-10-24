@@ -28,7 +28,7 @@ from experiments.bottleneck_link import BottleneckRelay
 from src.emulator import EmulatorConfig
 from src.rate_control import AdaptiveRateController, RateControllerConfig
 from src.receiver import receive_file
-from src.sender import send_file
+from src.paced_sender import send_file
 
 BASE_DELAY_MS = 20.0
 JITTER_MS = 5.0

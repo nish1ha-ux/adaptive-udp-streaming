@@ -173,25 +173,29 @@ The sender (`--arq stop-and-wait`, default) retransmits on timeout and also wait
 </details>
 
 <details>
-<summary><b>5. Network Emulator</b> — <i>Planned</i></summary>
+<summary><b>5. Network Emulator</b> — <code>src/emulator.py</code> ✅</summary>
 
-Assigned to **Subham Kumar Sahu**.
+Implemented by **Subham Kumar Sahu**.
 
-The emulator will introduce controlled network impairments:
+A UDP relay between sender and receiver that introduces seeded, reproducible impairments:
 
 - Packet loss
 - Delay
 - Jitter
 
+`experiments/bottleneck_link.py` adds a bandwidth-limited link with a finite queue on top of it (see `docs/bandwidth_emulator_plan.md`).
+Review notes: `docs/emulator_review.md`.
+
 </details>
 
 <details>
-<summary><b>6. Adaptive Rate Control</b> — <i>Planned</i></summary>
+<summary><b>6. Adaptive Rate Control</b> — <code>src/rate_control.py</code>, <code>src/paced_sender.py</code> ✅</summary>
 
-Assigned to **Subham Kumar Sahu**.
+Implemented by **Subham Kumar Sahu**.
 
-The sender will use measured network conditions such as packet loss,
-RTT and jitter to adjust its transmission rate.
+The paced sender uses measured packet loss, RTT and jitter to adjust its transmission rate (AIMD), and has a fixed-rate
+mode as the baseline. The receiver acknowledges each packet in `selective` mode for it. Wire format and behaviour of
+every module: `docs/protocol_design.md`.
 
 </details>
 
@@ -209,8 +213,7 @@ from disk, so it always shows the latest recorded report.
 | `experiments/run_bottleneck.py` | Fixed vs. adaptive over a bandwidth-limited link with a finite queue, plus a fixed-rate sweep | `results/experiment_bottleneck.json` |
 | `experiments/run_bottleneck_tuned.py` | Controller tuning on the bottleneck link | `results/experiment_bottleneck_tuned.json` |
 
-The scripts import the emulator and rate controller from `feature/rate-control-and-emulator`, so run them with that
-branch's `src/` present. The bandwidth-limited link lives in `experiments/bottleneck_link.py` (it extends the emulator
+Run them from the repository root, for example `python -m experiments.run_repeats`. The bandwidth-limited link lives in `experiments/bottleneck_link.py` (it extends the emulator
 classes without editing `src/emulator.py`); the design is in `docs/bandwidth_emulator_plan.md`.
 
 ### Method
@@ -263,8 +266,10 @@ adaptive-udp-streaming/
 │   ├── packet.py         #   AUDP wire format
 │   ├── reliability.py    #   RTT estimator, Stop-and-Wait ARQ
 │   ├── sender.py         #   file → UDP sender (CLI)
-│   └── receiver.py       #   UDP receiver → file (CLI)
-│                         #   (emulator.py, rate_control.py: branch feature/rate-control-and-emulator)
+│   ├── receiver.py       #   UDP receiver → file (CLI)
+│   ├── paced_sender.py   #   rate-paced sender with adaptive or fixed mode
+│   ├── rate_control.py   #   AIMD adaptive rate controller
+│   └── emulator.py       #   network emulator and UDP relay
 │
 ├── backend/              # Local test server (Python standard library only)
 │   ├── service.py        #   loopback transfers, sample files, results loader, run log
@@ -277,8 +282,9 @@ adaptive-udp-streaming/
 │
 ├── experiments/          # Experiment runners and the bottleneck link
 ├── results/              # Recorded reports (JSON); transfer_log.jsonl is local only
-├── docs/                 # Design notes (bandwidth-limited link plan)
-├── tests/                # pytest suite (protocol, reliability, backend, bottleneck)
+├── docs/                 # Protocol design, emulator review, bandwidth-limited link plan, status
+├── tests/                # pytest suite (protocol, reliability, emulator, backend, bottleneck, repo health)
+├── .github/workflows/    # CI, automatic merge into development, manual promotion to main
 ├── AI-USE.md             # Disclosure of AI assistance
 └── requirements.txt
 ```
@@ -363,6 +369,26 @@ Credit for each component follows the commit history of this repository.
 
 ---
 
+## 🔀 Branches and CI
+
+| Branch | Purpose |
+|---|---|
+| `development` | Where everyone's work lands. Kept up to date automatically. |
+| `main` | Stable. Updated only by a manual pull request from `development`. |
+| `feature/*` | Each member's own work. Open a pull request into `development`. |
+
+1. Push a branch and open a pull request into `development`.
+2. The `Auto-merge into development` workflow runs the full test suite.
+3. If the tests pass and the branch merges cleanly, it is merged automatically with a merge commit, so each author's
+   commits keep their own name. If there is a conflict or a failing test, the pull request stays open and the workflow
+   comments; fix it and push, and it runs again.
+4. To release, run the `Open promotion pull request` workflow (or open the pull request by hand), review it, and merge it.
+   Nothing merges into `main` automatically.
+
+The `CI` workflow also runs the tests on every push to `development` and on pull requests into `main`.
+
+---
+
 ## 🧪 Running Tests
 
 ```bash
@@ -374,7 +400,9 @@ python -m pytest tests/ -v
 - **Transfer tests** (`test_udp_transfer.py`): multi-packet, single-packet, empty and boundary files, SHA-256 integrity, duplicates, out-of-order data, timeouts.
 - **Reliability tests** (`test_reliability.py`, `test_arq_transfer.py`): RTT/RTO maths, Karn's algorithm, back-off, retry limits, lost data and ACKs.
 - **Backend tests** (`test_backend.py`): parameter validation, sample files, transfer API, results loader (newest file wins), run-log persistence, static serving and path-traversal protection.
-- **Bottleneck tests** (`test_bottleneck_link.py`): queue model; skipped unless the emulator branch's `src/emulator.py` is present.
+- **Emulator and rate-control tests** (`test_emulator.py`, `test_rate_control.py`, `test_integration.py`): impairments, AIMD rules, end-to-end transfers through the relay.
+- **Bottleneck tests** (`test_bottleneck_link.py`): the bandwidth-limited queue model.
+- **Repository health** (`test_repo_health.py`): no conflict markers, every `src` module imports, workflows present.
 
 ---
 
@@ -385,9 +413,13 @@ python -m pytest tests/ -v
 - [x] Local test server and responsive dashboard with live results and run log
 - [x] Experiment runners, seeded repeats and held-out tuning
 - [x] Bandwidth-limited link for a fair adaptive-vs-fixed test
-- [ ] Emulator and adaptive rate control merged into `main` (on `feature/rate-control-and-emulator`)
-- [ ] Controller tuned on the bottleneck link (running; see the dashboard)
-- [ ] Final written analysis (owner: Sudhanshu Aryan)
+- [x] Emulator, rate control and paced sender merged into `development`
+- [x] Controller tuned on the bottleneck link (results on the dashboard)
+- [x] Protocol design and emulator review documents
+- [x] CI and automatic merge into `development`
+- [ ] Longer-transfer experiments (1 MB or more)
+- [ ] Final written analysis and graphs (owner: Sudhanshu Aryan)
+- [ ] Promotion of `development` to `main` (manual)
 
 ---
 
