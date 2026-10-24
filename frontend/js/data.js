@@ -78,32 +78,6 @@ export function compare(pairs) {
 }
 
 /**
- * Turn the comparison into an honest headline. "Supported" requires adaptive to
- * win everywhere; any loss with no wins means "not supported"; everything else
- * is "inconclusive" so small samples are never over-sold.
- * @param {ReturnType<typeof compare>} c
- * @returns {{tone: 'good'|'bad'|'warn', title: string, body: string}}
- */
-export function verdict(c) {
-  const total = c.detail.length;
-  if (c.better === total) {
-    return { tone: 'good', title: 'Claim supported in every tested condition', body: `Adaptive goodput beat fixed-rate by more than ${SIMILARITY_BAND * 100}% in all ${total} experiments.` };
-  }
-  if (c.better === 0 && c.worse > 0) {
-    return {
-      tone: 'bad',
-      title: 'Claim not supported by the measurements',
-      body: `Adaptive goodput was lower in ${c.worse} of ${total} conditions and higher in none; it was steadier in ${c.steadier} of ${total}.`,
-    };
-  }
-  return {
-    tone: 'warn',
-    title: 'Mixed result',
-    body: `Adaptive was better in ${c.better}, similar in ${c.similar} and worse in ${c.worse} of ${total} experiments on goodput.`,
-  };
-}
-
-/**
  * Format a number for display with a fixed number of decimals.
  * @param {number} n
  * @param {number} [digits]

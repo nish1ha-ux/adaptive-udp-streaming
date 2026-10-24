@@ -105,9 +105,7 @@ main {
 .grid-2 > .card { margin-top: 0; }
 .grid-2 + .card { margin-top: var(--s4); }
 
-.verdict { border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: var(--radius); background: var(--card); padding: var(--s4); }
-.verdict strong { display: block; margin-bottom: var(--s1); }
-.verdict.good { border-left-color: var(--good); } .verdict.bad { border-left-color: var(--bad); }
+.data-status { font: .78rem var(--font-mono); color: var(--muted); padding-left: var(--s3); border-left: 2px solid var(--good); }
 .callout { border-style: dashed; color: var(--muted); font-size: .93rem; }
 
 .kpis { display: grid; gap: var(--s3); grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-top: var(--s4); }

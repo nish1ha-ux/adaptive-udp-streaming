@@ -5,6 +5,7 @@ Adaptive UDP Streaming — Local Test Server (backend)
 Serves the web front end (``frontend/``) and a small JSON API:
 
     GET  /api/info       protocol constants and upload limit
+    GET  /api/results    latest experiment results, read from results/*.json on every call
     GET  /api/samples    predefined test files (id, name, description, size)
     GET  /api/history    recent transfers (in memory, newest first)
     POST /api/transfer   settings via query string
@@ -32,6 +33,7 @@ from backend.service import (
     TransferParams,
     build_sample,
     list_samples,
+    load_results,
     protocol_info,
     run_transfer,
 )
@@ -70,6 +72,11 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/api/info":
             self._json(HTTPStatus.OK, protocol_info())
+        elif path == "/api/results":
+            try:
+                self._json(HTTPStatus.OK, load_results())
+            except TransferError as exc:
+                self._json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
         elif path == "/api/samples":
             self._json(HTTPStatus.OK, list_samples())
         elif path == "/api/history":

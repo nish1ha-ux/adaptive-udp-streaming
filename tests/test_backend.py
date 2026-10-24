@@ -111,3 +111,20 @@ def test_api_samples_and_sample_transfer(base_url):
 def test_api_unknown_sample_rejected(base_url):
     status, body = _post(f"{base_url}/api/transfer?sample=nope", b"")
     assert status == 422 and "Unknown sample" in body["error"]
+
+
+def test_api_results_reads_latest_file_from_disk(base_url, tmp_path, monkeypatch):
+    import backend.service as service
+    monkeypatch.setattr(service, "RESULTS_DIR", tmp_path)
+    (tmp_path / "experiment_repeats.json").write_text('{"meta": {}, "summary": [1]}', encoding="utf-8")
+    first = service.load_results()
+    assert first["source"] == "experiment_repeats.json" and first["data"]["summary"] == [1]
+    (tmp_path / "experiment_tuned.json").write_text('{"meta": {}, "summary": [2]}', encoding="utf-8")
+    assert service.load_results()["data"]["summary"] == [2]  # newer file wins, no restart needed
+
+
+def test_load_results_missing_raises(tmp_path, monkeypatch):
+    import backend.service as service
+    monkeypatch.setattr(service, "RESULTS_DIR", tmp_path)
+    with pytest.raises(TransferError):
+        service.load_results()

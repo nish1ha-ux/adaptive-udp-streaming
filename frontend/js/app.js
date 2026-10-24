@@ -6,7 +6,7 @@
  * so data files and API responses cannot inject markup.
  */
 
-import { compare, fmt, loadJson, pairByExperiment, verdict } from './data.js';
+import { compare, fmt, loadJson, pairByExperiment } from './data.js';
 import { groupedBars } from './charts.js';
 
 /** Where the optional live backend lives. Empty string = same origin (local server). */
@@ -61,11 +61,6 @@ function route() {
 function renderOverview(team, pairs, meta) {
   $('course').textContent = `${team.project.course} · ${team.project.track}`;
   $('claim').textContent = `Claim under test: “${team.project.claim}”`;
-
-  const v = verdict(compare(pairs));
-  const box = $('verdict');
-  box.className = `verdict ${v.tone}`;
-  box.replaceChildren(h('strong', {}, v.title), v.body);
 
   const allOk = pairs.every((p) => p.fixed.integrity_verified && p.adaptive.integrity_verified);
   const retx = (mode) => pairs.reduce((n, p) => n + p[mode].retransmissions, 0);
@@ -332,6 +327,45 @@ function initRunForm() {
 
 /* ------------------------------------------------------------------- boot */
 
+/** How often the page checks the backend for newer experiment results. */
+const REFRESH_MS = 8000;
+
+/**
+ * Fetch the latest recorded experiment results. The local server reads the file
+ * from disk on every request. A static deployment (no server) falls back to a
+ * results.json copied next to the page when the site was built.
+ * @returns {Promise<{source: string, modified: string|null, data: any}>}
+ */
+async function fetchResults() {
+  try {
+    return await loadJson(`${API_BASE}/api/results`);
+  } catch {
+    return { source: 'data/results.json', modified: null, data: await loadJson('data/results.json') };
+  }
+}
+
+let team = null;
+let lastModified;   // undefined until the first successful load
+
+/** Load results and redraw the data-driven views, but only when the file changed. */
+async function refreshData() {
+  try {
+    const res = await fetchResults();
+    if (res.modified !== null && res.modified === lastModified) return;
+    lastModified = res.modified;
+    const rows = res.data.summary;
+    const pairs = pairByExperiment(rows);
+    renderOverview(team, pairs, res.data.meta);
+    renderExperiments(rows, pairs);
+    renderTuning(res.data, pairs);
+    $('data-status').textContent = res.modified
+      ? `Live data: ${res.source}, last recorded ${res.modified.replace('T', ' ')}. Updates automatically.`
+      : `Data: ${res.source}`;
+  } catch (err) {
+    $('data-status').textContent = `No experiment results available yet (${err.message}).`;
+  }
+}
+
 async function main() {
   initTheme();
   renderProtocol();
@@ -340,20 +374,13 @@ async function main() {
   window.addEventListener('hashchange', route);
   route();
   try {
-    // Prefer the tuned experiment file when present; fall back to the default-config run.
-    const [repeats, team] = await Promise.all([
-      loadJson('data/tuned.json').catch(() => loadJson('data/repeats.json')),
-      loadJson('data/team.json'),
-    ]);
-    const rows = repeats.summary;
-    const pairs = pairByExperiment(rows);
-    renderOverview(team, pairs, repeats.meta);
-    renderExperiments(rows, pairs);
-    renderTuning(repeats, pairs);
+    team = await loadJson('data/team.json');
     renderCredits(team);
   } catch (err) {
-    $('verdict').textContent = `Could not load project data: ${err.message}`;
+    $('data-status').textContent = `Could not load team data: ${err.message}`;
   }
+  if (team) await refreshData();
+  setInterval(() => { if (team && !document.hidden) refreshData(); }, REFRESH_MS);
 }
 
 main();
