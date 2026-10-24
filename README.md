@@ -33,6 +33,20 @@ conditions.
 
 ---
 
+## 🧭 Course Context (CS-30003 · Coding Assignment 1)
+
+| | |
+|---|---|
+| **Track** | **Path B** — own proposal (not a catalogue project) |
+| **Mechanism implemented** | A custom transport protocol over UDP: framing, ACKs, retransmission, RTT/RTO estimation, and adaptive rate control |
+| **Level** | Socket level (`socket` API only; no transport/streaming libraries) |
+| **Falsifiable claim** | Adaptive transmission gives higher, more stable goodput than fixed-rate UDP under varying loss, delay and jitter |
+| **Method** | Controlled network emulator (seeded, reproducible); compare adaptive vs fixed-rate on goodput, retransmissions, latency and jitter; plot and analyse results |
+
+Assignment rules followed here: sockets only, one shared repository, every member commits under their own name, and AI usage disclosed in `AI-USE.md`.
+
+---
+
 ## 🎯 Objectives
 
 - Implement UDP communication using sockets.
@@ -122,7 +136,7 @@ python -m src.sender path/to/file.bin --host 127.0.0.1 --port 5005 --interval 0.
 
 **Features:** Chunked file transmission, SHA-256 file-hash logging, empty-file support, configurable pacing, input validation, structured logging.
 
-> **Note:** Adaptive rate control and retransmission are *not* implemented here — they are assigned to Subham and Prakhar respectively.
+> **Note:** Retransmission is provided by the reliability layer (see below). Adaptive rate control is not implemented yet — it is assigned to Subham.
 
 </details>
 
@@ -143,13 +157,18 @@ python -m src.receiver --host 127.0.0.1 --port 5005 --output received.bin --time
 
 </details>
 
-<details>
-<summary><b>4. Reliability Mechanism</b> — <i>Planned</i></summary>
+<details open>
+<summary><b>4. Reliability Mechanism</b> — <code>src/reliability.py</code> ✅</summary>
 
-Assigned to **Prakhar Manish Srivastava**.
+Implemented by **Prakhar Manish Srivastava**.
 
-Acknowledgements and retransmissions will be used to detect and recover
-from packet loss.
+Stop-and-Wait ARQ with ACK packets (type 3). Socket-independent building blocks:
+
+- `RttEstimator` — Jacobson/Karels SRTT/RTTVAR/RTO (RFC 6298), Karn's algorithm (retransmitted packets give no RTT sample), exponential backoff, configurable min/max RTO.
+- `StopAndWaitARQ` — sender state: one packet in flight, matching-ACK validation, timeout detection, retry limit (`MaxRetriesExceededError`).
+- `StopAndWaitReceiver` — receiver state: sequence progression and duplicate re-ACK; never ACKs seq 0 before it arrives.
+
+The sender (`--arq stop-and-wait`, default) retransmits on timeout and also waits for an ACK of the END packet. The receiver lingers briefly after completion to re-ACK a lost END ACK. `--arq none` keeps the original fire-and-forget behaviour.
 
 </details>
 
@@ -232,39 +251,74 @@ protocol functionality.
 ```text
 adaptive-udp-streaming/
 │
-├── src/
-│   ├── sender.py
-│   ├── receiver.py
-│   ├── packet.py
-│   ├── reliability.py
-│   ├── rate_control.py
-│   └── emulator.py
+├── src/                  # Protocol core (library + CLI)
+│   ├── packet.py         #   AUDP wire format
+│   ├── reliability.py    #   RTT estimator, Stop-and-Wait ARQ
+│   ├── sender.py         #   file → UDP sender (CLI)
+│   ├── receiver.py       #   UDP receiver → file (CLI)
+│   ├── rate_control.py   #   (planned) adaptive rate control
+│   └── emulator.py       #   (planned) network emulator
 │
-├── tests/
+├── backend/              # Local test server (Python stdlib only)
+│   ├── service.py        #   runs a loopback transfer, keeps history
+│   └── server.py         #   JSON API + static file server
 │
+├── frontend/             # Web UI served by the backend
+│   ├── index.html
+│   ├── styles.css
+│   └── app.js
+│
+├── tests/                # pytest suite (protocol + backend)
 ├── experiments/
-│
-├── results/
-│
-├── docs/
-│
-├── requirements.txt
-├── README.md
-└── AI-USE.md
+└── requirements.txt
 ```
 
-> The project structure will evolve as implementation progresses.
+### Layering
+
+```text
+frontend/ (browser)  ──HTTP/JSON──▶  backend/  ──imports──▶  src/ (protocol core)
+```
+
+`src/` has no knowledge of the web layer, so the CLI tools and the tests keep working unchanged.
+
+---
+
+## 🖥️ Run the Local Test Server
+
+```bash
+pip install -r requirements.txt
+python -m backend.server --port 8000
+```
+
+Open <http://127.0.0.1:8000>, choose a file (up to 2 MB), pick the reliability mode and parameters, and press **Run transfer**. The backend starts a receiver and a sender on loopback, then reports packets, retransmissions, duplicates, final RTO, elapsed time, goodput and a SHA-256 integrity check. The last 50 runs are listed under *History* (kept in memory; cleared on restart).
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/info` | Protocol constants and upload limit |
+| `GET /api/history` | Recent transfers, newest first |
+| `POST /api/transfer?filename=&arq=&interval=&max_retries=&initial_rto=` | Raw file body; runs a loopback transfer and returns the result |
+
+> Loopback never drops packets, so retransmissions will normally be 0 until the network emulator is merged.
+
+### Command-line (two terminals)
+
+```bash
+python -m src.receiver --port 5005 --output received.bin
+python -m src.sender test_data/sample.txt --port 5005
+```
 
 ---
 
 ## 👥 Team
 
-| Member | Responsibility |
-|---|---|
-| **Nishtha Bhushan** | UDP communication & packet format |
-| **Prakhar Manish Srivastava** | ACK, retransmission & RTT |
-| **Subham Kumar Sahu** | Adaptive rate control & network emulator |
-| **Sudhanshu Aryan** | Testing, experiments & analysis |
+| Member | GitHub | Responsibility |
+|---|---|---|
+| **Nishtha Bhushan** | [@nish1ha-ux](https://github.com/nish1ha-ux) | UDP communication & packet format (`src/packet.py`, `src/sender.py`, `src/receiver.py`) |
+| **Prakhar Manish Srivastava** | — | ACK, retransmission & RTT (`src/reliability.py`) |
+| **Subham Kumar Sahu** | [@subhamkumarsahu929](https://github.com/subhamkumarsahu929) | Adaptive rate control & network emulator (branch `feature/rate-control-and-emulator`) |
+| **Sudhanshu Aryan** | — | Testing, experiments & analysis |
+
+Credit for each component follows the commit history of this repository.
 
 ---
 
@@ -294,8 +348,12 @@ python -m pytest tests/ -v
 
 Test coverage includes:
 
-- **30 packet tests** — round-trips, checksums, malformed/truncated data, unsupported types, oversized payloads, input validation, END-payload encoding.
-- **10 transfer tests** — multi-packet, single-packet, empty-file, exact-boundary transfers, SHA-256 integrity verification, duplicate detection, out-of-order reassembly, timeout behavior, missing-packet detection, sender input validation.
+- **Packet tests** (`test_packet.py`) — round-trips, checksums, malformed/truncated data, unsupported types, oversized payloads, ACK rules, END-payload encoding.
+- **Transfer tests** (`test_udp_transfer.py`) — multi-packet, single-packet, empty-file and boundary transfers, SHA-256 integrity, duplicates, out-of-order reassembly, timeouts, missing packets.
+- **Reliability tests** (`test_reliability.py`, `test_arq_transfer.py`) — RTT/RTO math, Karn's algorithm, backoff, retry limits, ARQ transfers with lost DATA/ACK/END.
+- **Backend tests** (`test_backend.py`) — parameter validation, loopback transfer service, HTTP API, static serving and path-traversal protection.
+
+All 100 tests pass.
 
 ---
 
@@ -305,11 +363,12 @@ Test coverage includes:
 
 - [x] UDP communication
 - [x] Custom packet format
-- [ ] Reliability mechanism
-- [ ] RTT measurement
+- [x] Reliability mechanism (Stop-and-Wait ARQ)
+- [x] RTT measurement (RFC 6298)
+- [x] Local test server + web UI
 - [ ] Network emulator
 - [ ] Adaptive rate control
-- [x] Testing (packet & transfer)
+- [x] Testing (packet, transfer, reliability, backend)
 - [ ] Performance experiments
 - [ ] Final documentation
 
