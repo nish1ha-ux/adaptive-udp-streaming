@@ -1,54 +1,121 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Adaptive UDP Streaming</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Measured results, protocol reference and credits for the Adaptive UDP Streaming project.">
+  <meta name="theme-color" content="#0f1214">
+  <title>AUDP Lab — Adaptive UDP Streaming</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <main>
-    <header>
-      <h1>Adaptive UDP Streaming</h1>
-      <p id="proto" class="muted">Loading protocol info…</p>
-    </header>
+  <a class="skip" href="#main">Skip to content</a>
 
-    <section class="card">
-      <h2>Send a file over UDP (loopback)</h2>
-      <form id="form">
-        <label>File <input type="file" id="file" required></label>
-        <div class="grid">
-          <label>Reliability
-            <select id="arq">
-              <option value="stop-and-wait">Stop-and-Wait ARQ</option>
-              <option value="none">None (blast)</option>
-            </select>
-          </label>
-          <label>Packet interval (s) <input type="number" id="interval" value="0.001" min="0" max="1" step="0.001"></label>
-          <label>Max retries <input type="number" id="max_retries" value="5" min="0" max="20"></label>
-          <label>Initial RTO (s) <input type="number" id="initial_rto" value="1" min="0.2" max="10" step="0.1"></label>
-        </div>
-        <button type="submit" id="run">Run transfer</button>
-        <span id="status" class="muted" role="status"></span>
-      </form>
+  <!-- Navigation: left rail on desktop, bottom tab bar on phones (see styles.css). -->
+  <nav class="rail" aria-label="Primary">
+    <a class="brand" href="#/overview" aria-label="AUDP Lab home">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-text">AUDP<small>Lab</small></span>
+    </a>
+    <ul class="tabs">
+      <li><a href="#/overview" data-view="overview"><i>01</i><span>Overview</span></a></li>
+      <li><a href="#/experiments" data-view="experiments"><i>02</i><span>Experiments</span></a></li>
+      <li><a href="#/protocol" data-view="protocol"><i>03</i><span>Protocol</span></a></li>
+      <li><a href="#/run" data-view="run"><i>04</i><span>Run</span></a></li>
+      <li><a href="#/credits" data-view="credits"><i>05</i><span>Credits</span></a></li>
+    </ul>
+    <button class="theme-toggle" id="theme" type="button" aria-label="Toggle colour theme">
+      <span class="dot" aria-hidden="true"></span><span class="label">Theme</span>
+    </button>
+  </nav>
+
+  <main id="main" tabindex="-1">
+    <!-- Views are plain sections toggled by the hash router in js/app.js. -->
+    <section class="view" id="view-overview" aria-labelledby="h-overview">
+      <header class="page-head">
+        <p class="eyebrow" id="course"></p>
+        <h1 id="h-overview">Does adapting the send rate actually help?</h1>
+        <p class="lede" id="claim"></p>
+      </header>
+      <div class="verdict" id="verdict" role="status"></div>
+      <div class="kpis" id="kpis"></div>
+      <div class="card">
+        <div class="card-head"><h2>Goodput by condition</h2><div class="legend" id="legend"></div></div>
+        <div id="chart-goodput" class="chart" role="img" aria-label="Goodput by experiment, fixed versus adaptive"></div>
+      </div>
+      <div class="card callout" id="limits"></div>
     </section>
 
-    <section class="card" id="result" hidden>
-      <h2>Result</h2>
-      <p id="verdict"></p>
-      <dl id="stats"></dl>
-    </section>
-
-    <section class="card">
-      <h2>History</h2>
-      <div class="scroll">
-        <table>
-          <thead><tr><th>Time</th><th>File</th><th>Bytes</th><th>Packets</th><th>Retrans.</th><th>Elapsed (s)</th><th>Goodput (kbps)</th><th>OK</th></tr></thead>
-          <tbody id="history"></tbody>
-        </table>
+    <section class="view" id="view-experiments" aria-labelledby="h-experiments" hidden>
+      <header class="page-head">
+        <p class="eyebrow">Measured results</p>
+        <h1 id="h-experiments">Experiments</h1>
+        <p class="lede">Every row is a measured run from the project's own network emulator. Nothing on this page is estimated.</p>
+      </header>
+      <div class="grid-2">
+        <div class="card"><h2>Average RTT (ms)</h2><div id="chart-rtt" class="chart" role="img" aria-label="Average RTT by experiment"></div></div>
+        <div class="card"><h2>Average jitter (ms)</h2><div id="chart-jitter" class="chart" role="img" aria-label="Average jitter by experiment"></div></div>
+        <div class="card"><h2>Retransmissions</h2><div id="chart-retx" class="chart" role="img" aria-label="Retransmissions by experiment"></div></div>
+        <div class="card"><h2>Final send rate (packets/s)</h2><div id="chart-rate" class="chart" role="img" aria-label="Final send rate by experiment"></div></div>
+      </div>
+      <div class="card">
+        <h2>Raw data</h2>
+        <div class="scroll"><table id="table" class="data"></table></div>
       </div>
     </section>
+
+    <section class="view" id="view-protocol" aria-labelledby="h-protocol" hidden>
+      <header class="page-head">
+        <p class="eyebrow">AUDP version 1</p>
+        <h1 id="h-protocol">Protocol reference</h1>
+        <p class="lede">A small binary protocol over UDP. All multi-byte fields are big-endian.</p>
+      </header>
+      <div class="card">
+        <h2>Header layout · 52 bytes</h2>
+        <div class="bytes" id="bytes" role="img" aria-label="Header field layout"></div>
+        <div class="scroll"><table class="data" id="fields"></table></div>
+      </div>
+      <div class="grid-2">
+        <div class="card"><h2>Packet types</h2><ul class="plain" id="types"></ul></div>
+        <div class="card"><h2>Reliability</h2><ul class="plain" id="reliab"></ul></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-run" aria-labelledby="h-run" hidden>
+      <header class="page-head">
+        <p class="eyebrow">Live loopback test</p>
+        <h1 id="h-run">Run a transfer</h1>
+        <p class="lede">Sends a real file over UDP on this machine and verifies it with SHA-256. Needs the local server (<code>python -m backend.server</code>).</p>
+      </header>
+      <div class="card">
+        <form id="form" novalidate>
+          <label class="file"><span>File (up to 2 MB)</span><input type="file" id="file" required></label>
+          <div class="fields">
+            <label>Reliability
+              <select id="arq"><option value="stop-and-wait">Stop-and-Wait ARQ</option><option value="none">None</option></select>
+            </label>
+            <label>Packet interval (s)<input id="interval" type="number" value="0.001" min="0" max="1" step="0.001"></label>
+            <label>Max retries<input id="max_retries" type="number" value="5" min="0" max="20"></label>
+            <label>Initial RTO (s)<input id="initial_rto" type="number" value="1" min="0.2" max="10" step="0.1"></label>
+          </div>
+          <div class="actions"><button type="submit" id="go" class="btn">Run transfer</button><span id="run-status" class="muted" role="status"></span></div>
+        </form>
+      </div>
+      <div class="card" id="run-result" hidden><h2>Result</h2><p id="run-verdict" class="strong"></p><dl id="run-stats" class="stats"></dl></div>
+      <div class="card"><h2>History</h2><div class="scroll"><table class="data" id="history"></table></div></div>
+    </section>
+
+    <section class="view" id="view-credits" aria-labelledby="h-credits" hidden>
+      <header class="page-head">
+        <p class="eyebrow">Team</p>
+        <h1 id="h-credits">Credits</h1>
+        <p class="lede">Who built what, taken from the repository history and the project proposal.</p>
+      </header>
+      <div class="people" id="people"></div>
+      <div class="card" id="web"></div>
+    </section>
   </main>
-  <script src="app.js"></script>
+
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>

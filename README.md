@@ -263,10 +263,11 @@ adaptive-udp-streaming/
 │   ├── service.py        #   runs a loopback transfer, keeps history
 │   └── server.py         #   JSON API + static file server
 │
-├── frontend/             # Web UI served by the backend
+├── frontend/             # Responsive dashboard (static; no build step)
 │   ├── index.html
 │   ├── styles.css
-│   └── app.js
+│   ├── js/               #   app.js (router/views), data.js, charts.js
+│   └── data/             #   results.json (measured), team.json (credits)
 │
 ├── tests/                # pytest suite (protocol + backend)
 ├── experiments/
