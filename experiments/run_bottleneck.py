@@ -45,8 +45,12 @@ METRICS = ("goodput_kbps", "duration_s", "retransmissions", "avg_rtt_ms", "avg_j
            "final_rate_pps", "packets_sent")
 
 
-def trial(bandwidth_kbps: int, seed: int, mode: str, rate_pps: float, payload: bytes) -> Dict:
-    """One transfer through the bottleneck. ``mode`` is 'fixed' or 'adaptive'."""
+def trial(bandwidth_kbps: int, seed: int, mode: str, rate_pps: float, payload: bytes,
+          controller_cfg: Optional[Dict[str, float]] = None) -> Dict:
+    """One transfer through the bottleneck. ``mode`` is 'fixed' or 'adaptive'.
+
+    ``controller_cfg`` overrides rate-controller settings (adaptive mode only).
+    """
     with tempfile.TemporaryDirectory(prefix="bneck_") as tmp:
         src, dst = Path(tmp) / "src.bin", Path(tmp) / "dst.bin"
         src.write_bytes(payload)
@@ -64,7 +68,8 @@ def trial(bandwidth_kbps: int, seed: int, mode: str, rate_pps: float, payload: b
         controller: Optional[AdaptiveRateController] = None
         if mode == "adaptive":
             controller = AdaptiveRateController(RateControllerConfig(
-                initial_rate=rate_pps, min_rate=10.0, max_rate=1000.0, min_adjustment_interval_s=0.03))
+                initial_rate=rate_pps, min_rate=10.0, max_rate=1000.0, min_adjustment_interval_s=0.03,
+                **(controller_cfg or {})))
         try:
             stats = send_file(str(src), port=relay_port, packet_interval=1.0 / rate_pps, mode=mode,
                               controller=controller, ack_timeout=0.25, max_retransmissions=6,

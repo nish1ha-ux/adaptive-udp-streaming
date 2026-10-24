@@ -9,7 +9,7 @@ An adaptive UDP-based streaming protocol designed for reliable and efficient rea
   <img src="https://img.shields.io/badge/Language-Python-blue?style=for-the-badge&logo=python">
   <img src="https://img.shields.io/badge/Protocol-UDP-orange?style=for-the-badge">
   <img src="https://img.shields.io/badge/Project-Computer%20Networks-green?style=for-the-badge">
-  <img src="https://img.shields.io/badge/Status-In%20Development-yellow?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Status-Experiments%20Running-yellow?style=for-the-badge">
 </p>
 
 </div>
@@ -199,33 +199,40 @@ RTT and jitter to adjust its transmission rate.
 
 ## 🧪 Experiments
 
-The protocol will be evaluated under different network conditions.
+Every experiment is seeded, repeated and written to a JSON file in `results/`. The dashboard reads the newest file
+from disk, so it always shows the latest recorded report.
 
-### Variables
+| Script | What it measures | Output |
+|---|---|---|
+| `experiments/run_repeats.py` | Fixed vs. adaptive under random loss, delay and jitter (E1–E4), 5 seeded repeats | `results/experiment_repeats.json` |
+| `experiments/run_tuned.py` | Same, after searching the controller's thresholds on held-out seeds | `results/experiment_tuned.json` |
+| `experiments/run_bottleneck.py` | Fixed vs. adaptive over a bandwidth-limited link with a finite queue, plus a fixed-rate sweep | `results/experiment_bottleneck.json` |
+| `experiments/run_bottleneck_tuned.py` | Controller tuning on the bottleneck link | `results/experiment_bottleneck_tuned.json` |
 
-| Variable | Description |
-|---|---|
-| Packet Loss | Percentage of packets intentionally dropped |
-| Delay | Artificial network delay |
-| Jitter | Variation in packet delay |
-| Transmission Rate | Sender's data transmission rate |
+The scripts import the emulator and rate controller from `feature/rate-control-and-emulator`, so run them with that
+branch's `src/` present. The bandwidth-limited link lives in `experiments/bottleneck_link.py` (it extends the emulator
+classes without editing `src/emulator.py`); the design is in `docs/bandwidth_emulator_plan.md`.
 
-### Performance Metrics
+### Method
 
-| Metric | Purpose |
-|---|---|
-| **Goodput** | Effective successfully delivered data |
-| **Packet Loss** | Percentage of packets lost |
-| **Latency** | End-to-end delivery delay |
-| **Jitter** | Variation in packet delay |
-| **Retransmissions** | Number of packets retransmitted |
+- Same payload and same seeds for both modes, so each pair sees identical network behaviour.
+- Controller settings are chosen on tuning seeds (101–103) and reported on separate seeds (1–5).
+- Every configuration tried is kept in the result file and shown on the dashboard, including those that did worse.
+- Metrics: goodput, round-trip time, jitter, retransmissions, SHA-256 integrity.
 
-### Experimental Claim
+### Where the claim stands
 
-> **Adaptive transmission will provide better and more stable streaming
-> performance than fixed-rate UDP under varying network conditions.**
+> **Claim:** adaptive transmission gives better and more stable performance than fixed-rate UDP under varying conditions.
 
-Results will be presented using graphs and comparative analysis.
+- With random loss only, the emulator has no capacity limit, so slowing down cannot reduce loss; adaptive control has little to gain there.
+- On the bandwidth-limited link (100 KB transfers, seeds 1-5), tuning the controller roughly doubled its goodput versus the
+  default settings, but it still sends fewer bits per second than the fixed 200 packets/s baseline.
+- Where the link is congested (1000 and 500 kbps), adaptive had no retransmissions and about half the delay, and it delivered
+  the file intact where fixed 200 pps overran the queue and, at 500 kbps, failed the integrity check.
+- So the evidence so far supports the claim for delay, retransmissions and reliability under congestion, and does not support
+  it for raw goodput on short transfers. Longer transfers are the next experiment, since the controller's start-up cost is
+  spread over fewer packets in a 100 KB file.
+- The report is the measured data, not a conclusion written in advance. See the dashboard's Experiments page.
 
 ---
 
@@ -233,12 +240,13 @@ Results will be presented using graphs and comparative analysis.
 
 | Technology | Purpose |
 |---|---|
-| **Python** | Core implementation |
+| **Python** | Core implementation, test server, experiments |
 | `socket` | UDP communication |
 | `threading` | Concurrent operations |
 | `time` | Timing and RTT measurement |
 | `hashlib` | Data integrity verification |
-| `matplotlib` | Performance visualization |
+| `http.server` | Local test server (standard library only) |
+| HTML, CSS, JavaScript (ES modules) | Responsive dashboard, no build step |
 
 The core networking mechanism is implemented using socket-level
 communication rather than an existing library that provides the required
@@ -255,22 +263,23 @@ adaptive-udp-streaming/
 │   ├── packet.py         #   AUDP wire format
 │   ├── reliability.py    #   RTT estimator, Stop-and-Wait ARQ
 │   ├── sender.py         #   file → UDP sender (CLI)
-│   ├── receiver.py       #   UDP receiver → file (CLI)
-│   ├── rate_control.py   #   (planned) adaptive rate control
-│   └── emulator.py       #   (planned) network emulator
+│   └── receiver.py       #   UDP receiver → file (CLI)
+│                         #   (emulator.py, rate_control.py: branch feature/rate-control-and-emulator)
 │
-├── backend/              # Local test server (Python stdlib only)
-│   ├── service.py        #   runs a loopback transfer, keeps history
+├── backend/              # Local test server (Python standard library only)
+│   ├── service.py        #   loopback transfers, sample files, results loader, run log
 │   └── server.py         #   JSON API + static file server
 │
-├── frontend/             # Responsive dashboard (static; no build step)
-│   ├── index.html
-│   ├── styles.css
-│   ├── js/               #   app.js (router/views), data.js, charts.js
-│   └── data/             #   results.json (measured), team.json (credits)
+├── frontend/             # Responsive dashboard (static, no build step)
+│   ├── index.html, styles.css
+│   ├── js/               #   app.js (router, views), data.js, charts.js
+│   └── data/team.json    #   credits text
 │
-├── tests/                # pytest suite (protocol + backend)
-├── experiments/
+├── experiments/          # Experiment runners and the bottleneck link
+├── results/              # Recorded reports (JSON); transfer_log.jsonl is local only
+├── docs/                 # Design notes (bandwidth-limited link plan)
+├── tests/                # pytest suite (protocol, reliability, backend, bottleneck)
+├── AI-USE.md             # Disclosure of AI assistance
 └── requirements.txt
 ```
 
@@ -278,9 +287,11 @@ adaptive-udp-streaming/
 
 ```text
 frontend/ (browser)  ──HTTP/JSON──▶  backend/  ──imports──▶  src/ (protocol core)
+                                         │
+                                         └── reads results/*.json, appends results/transfer_log.jsonl
 ```
 
-`src/` has no knowledge of the web layer, so the CLI tools and the tests keep working unchanged.
+`src/` has no knowledge of the web layer, so the CLI tools and the tests work without it.
 
 ---
 
@@ -291,16 +302,29 @@ pip install -r requirements.txt
 python -m backend.server --port 8000
 ```
 
-Open <http://127.0.0.1:8000>, choose a file (up to 2 MB), pick the reliability mode and parameters, and press **Run transfer**. The backend starts a receiver and a sender on loopback, then reports packets, retransmissions, duplicates, final RTO, elapsed time, goodput and a SHA-256 integrity check. The last 50 runs are listed under *History* (kept in memory; cleared on restart).
+Open <http://127.0.0.1:8000>. Pages:
+
+| Page | Shows |
+|---|---|
+| **Overview** | Latest experiment report (charts and condition cards), plus a live summary of local loopback runs |
+| **Experiments** | RTT, jitter, retransmission and send-rate charts, raw table, controller tuning and fixed-rate sweep when present |
+| **Protocol** | Header layout, packet types, reliability rules |
+| **Run** | Send a predefined sample file (or your own, up to 2 MB) over UDP on this machine and verify it by SHA-256 |
+| **Credits** | Each member's contributions and a project summary |
+
+**Live data.** Nothing on the dashboard is typed into the page. The server reads the newest file in `results/` on every
+request, and the page checks again every 8 seconds. Each loopback run is appended to `results/transfer_log.jsonl`, so the
+Overview's live summary survives restarts and updates as soon as a run finishes.
 
 | Endpoint | Description |
 |---|---|
+| `GET /api/results` | Newest experiment report from `results/` (`source`, `modified`, `data`) |
 | `GET /api/samples` | Predefined test files (empty, note, boundary, article, log, pattern, random) |
+| `GET /api/history` | Recent loopback runs, newest first (from the run log) |
 | `GET /api/info` | Protocol constants and upload limit |
-| `GET /api/history` | Recent transfers, newest first |
-| `POST /api/transfer?filename=&arq=&interval=&max_retries=&initial_rto=` | Raw file body; runs a loopback transfer and returns the result |
+| `POST /api/transfer?sample=<id>&arq=&interval=&max_retries=&initial_rto=` | Run a transfer with a predefined file (or send a raw body with `?filename=`) |
 
-> Loopback never drops packets, so retransmissions will normally be 0 until the network emulator is merged.
+> Loopback never drops packets, so retransmissions in live runs are normally 0. Loss, delay and bandwidth limits come from the experiment scripts.
 
 ### Command-line (two terminals)
 
@@ -341,38 +365,29 @@ Credit for each component follows the commit history of this repository.
 
 ## 🧪 Running Tests
 
-Install dependencies and run the test suite:
-
 ```bash
 pip install -r requirements.txt
 python -m pytest tests/ -v
 ```
 
-Test coverage includes:
-
-- **Packet tests** (`test_packet.py`) — round-trips, checksums, malformed/truncated data, unsupported types, oversized payloads, ACK rules, END-payload encoding.
-- **Transfer tests** (`test_udp_transfer.py`) — multi-packet, single-packet, empty-file and boundary transfers, SHA-256 integrity, duplicates, out-of-order reassembly, timeouts, missing packets.
-- **Reliability tests** (`test_reliability.py`, `test_arq_transfer.py`) — RTT/RTO math, Karn's algorithm, backoff, retry limits, ARQ transfers with lost DATA/ACK/END.
-- **Backend tests** (`test_backend.py`) — parameter validation, loopback transfer service, HTTP API, static serving and path-traversal protection.
-
-All 100 tests pass.
+- **Packet tests** (`test_packet.py`): round-trips, checksums, malformed or truncated data, ACK rules, END payload.
+- **Transfer tests** (`test_udp_transfer.py`): multi-packet, single-packet, empty and boundary files, SHA-256 integrity, duplicates, out-of-order data, timeouts.
+- **Reliability tests** (`test_reliability.py`, `test_arq_transfer.py`): RTT/RTO maths, Karn's algorithm, back-off, retry limits, lost data and ACKs.
+- **Backend tests** (`test_backend.py`): parameter validation, sample files, transfer API, results loader (newest file wins), run-log persistence, static serving and path-traversal protection.
+- **Bottleneck tests** (`test_bottleneck_link.py`): queue model; skipped unless the emulator branch's `src/emulator.py` is present.
 
 ---
 
 ## 🚧 Project Status
 
-**Current Status:** 🟡 In Development
-
-- [x] UDP communication
-- [x] Custom packet format
-- [x] Reliability mechanism (Stop-and-Wait ARQ)
-- [x] RTT measurement (RFC 6298)
-- [x] Local test server + web UI
-- [ ] Network emulator
-- [ ] Adaptive rate control
-- [x] Testing (packet, transfer, reliability, backend)
-- [ ] Performance experiments
-- [ ] Final documentation
+- [x] UDP communication and custom packet format
+- [x] Reliability: ACKs, retransmission, RTT/RTO (Stop-and-Wait ARQ)
+- [x] Local test server and responsive dashboard with live results and run log
+- [x] Experiment runners, seeded repeats and held-out tuning
+- [x] Bandwidth-limited link for a fair adaptive-vs-fixed test
+- [ ] Emulator and adaptive rate control merged into `main` (on `feature/rate-control-and-emulator`)
+- [ ] Controller tuned on the bottleneck link (running; see the dashboard)
+- [ ] Final written analysis (owner: Sudhanshu Aryan)
 
 ---
 

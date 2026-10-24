@@ -46,6 +46,8 @@
         <div id="chart-goodput" class="chart" role="img" aria-label="Goodput by experiment, fixed versus adaptive"></div>
       </div>
       <div class="card callout" id="limits"></div>
+      <h2 class="section-title">Live loopback runs on this machine</h2>
+      <div class="card" id="live"><p class="muted">Checking the local server…</p></div>
     </section>
 
     <section class="view" id="view-experiments" aria-labelledby="h-experiments" hidden>
@@ -71,6 +73,10 @@
         <div class="scroll"><table class="data" id="tuning-compare"></table></div>
         <h3>Every configuration tried (tuning seeds)</h3>
         <div class="scroll"><table class="data" id="tuning-grid"></table></div>
+        <div id="sweep-block" hidden>
+          <h3>Goodput of other fixed rates on the same link (kbps)</h3>
+          <div class="scroll"><table class="data" id="tuning-sweep"></table></div>
+        </div>
       </div>
     </section>
 

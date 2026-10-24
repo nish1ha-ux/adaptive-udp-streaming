@@ -100,6 +100,7 @@ function renderConditions(pairs, detail) {
       h('header', {}, h('b', {}, code), h('span', { class: `chip ${d.outcome}` }, `${sign(d.change)} goodput`)),
       h('p', { class: 'cond-name' }, rest.join(' ')),
       h('dl', {},
+        ...(p.fixed.bandwidth_kbps ? [h('dt', {}, 'Link'), h('dd', {}, `${fmt(p.fixed.bandwidth_kbps, 0)} kbps`)] : []),
         h('dt', {}, 'Loss'), h('dd', {}, `${fmt(p.fixed.loss_configured * 100, 0)}%`),
         h('dt', {}, 'Delay'), h('dd', {}, `${fmt(p.fixed.base_delay_ms, 0)} ms`),
         h('dt', {}, 'Jitter'), h('dd', {}, `${fmt(p.fixed.jitter_ms, 0)} ms`)));
@@ -150,15 +151,15 @@ function renderExperiments(rows, pairs) {
  * presented without the alternatives.
  */
 function renderTuning(data, pairs) {
-  if (!data.tuning_grid) return;
+  if (!data.tuning_grid) { $('tuning').hidden = true; return; }
   const m = data.meta;
   $('tuning').hidden = false;
+  // Settings differ between result files, so list whatever keys the file carries.
+  const describe = (cfg) => Object.entries(cfg).map(([k, v]) => `${k.replaceAll('_', ' ')} ${v}`).join(', ');
   $('tuning-note').textContent =
     `The adaptive bars on this site use the configuration chosen on tuning seeds ${m.tune_seeds.join(', ')}. ` +
     `Results are measured on separate seeds ${m.eval_seeds.join(', ')}, which were not used to choose it. ` +
-    `Chosen: RTT ${m.tuned_config.rtt_threshold_ms} ms, jitter ${m.tuned_config.jitter_threshold_ms} ms, ` +
-    `loss ${m.tuned_config.loss_threshold * 100}%. Default: RTT ${m.default_config.rtt_threshold_ms} ms, ` +
-    `jitter ${m.default_config.jitter_threshold_ms} ms, loss ${m.default_config.loss_threshold * 100}%.`;
+    `Chosen: ${describe(m.tuned_config)}. Default: ${describe(m.default_config)}.`;
 
   const def = Object.fromEntries(data.default_adaptive_summary.map((r) => [r.experiment, r]));
   fillTable($('tuning-compare'), [
@@ -168,12 +169,25 @@ function renderTuning(data, pairs) {
     ['Tuned adaptive kbps', (p) => fmt(p.adaptive.goodput_kbps, 1), true],
   ], pairs);
 
+  const keys = Object.keys(m.tuned_config);
   fillTable($('tuning-grid'), [
-    ['RTT ms', (g) => String(g.config.rtt_threshold_ms), true],
-    ['Jitter ms', (g) => String(g.config.jitter_threshold_ms), true],
-    ['Loss', (g) => `${g.config.loss_threshold * 100}%`, true],
+    ...keys.map((k) => [k.replaceAll('_', ' '), (g) => String(g.config[k]), true]),
     ['Score (adaptive ÷ fixed goodput)', (g) => fmt(g.score, 3), true],
   ], [...data.tuning_grid].sort((a, b) => b.score - a.score));
+
+  // Optional sweep of other fixed rates on the same link: shows what a better-chosen
+  // fixed rate would have achieved, so adaptive is compared with more than one baseline.
+  const sweep = data.fixed_sweep ?? [];
+  $('sweep-block').hidden = sweep.length === 0;
+  if (sweep.length) {
+    const rates = [...new Set(sweep.map((r) => r.rate_pps))].sort((a, b) => a - b);
+    const byCond = Object.groupBy(sweep, (r) => r.experiment);
+    fillTable($('tuning-sweep'), [
+      ['Condition', (r) => r.name, false],
+      ...rates.map((rate) => [`${rate} pps`, (r) => fmt(byCond[r.name].find((x) => x.rate_pps === rate)?.goodput_kbps ?? 0, 0), true]),
+      ['Adaptive (tuned)', (r) => fmt(pairs.find((p) => p.name === r.name)?.adaptive.goodput_kbps ?? 0, 0), true],
+    ], Object.keys(byCond).map((name) => ({ name })));
+  }
 }
 
 /** Render a table from column definitions: [header, getter, isNumeric]. */
@@ -317,6 +331,7 @@ function initRunForm() {
       showRunResult(data);
       setStatus('');
       refreshHistory();
+      refreshLive();
     } catch (err) {
       setStatus(`Error: ${err.message}. Is the local server running?`);
     } finally {
@@ -326,6 +341,50 @@ function initRunForm() {
 }
 
 /* ------------------------------------------------------------------- boot */
+
+/** Friendly names for the result files the experiment scripts write. */
+const REPORT_LABELS = {
+  'experiment_bottleneck_tuned.json': 'Bottleneck link, tuned controller',
+  'experiment_bottleneck.json': 'Bottleneck link, default controller',
+  'experiment_tuned.json': 'Random loss and delay, tuned controller',
+  'experiment_repeats.json': 'Random loss and delay, default controller',
+};
+
+/**
+ * Summarise local loopback transfers (from the server's persisted log) so they show on
+ * the Overview and change as new runs finish. Hidden when the server is unreachable.
+ */
+async function refreshLive() {
+  const box = $('live');
+  let runs;
+  try {
+    runs = await loadJson(`${API_BASE}/api/history`);
+  } catch {
+    box.replaceChildren(h('p', { class: 'muted' }, 'Local server not reachable. Start it to include live runs here.'));
+    return;
+  }
+  if (!runs.length) {
+    box.replaceChildren(h('p', { class: 'muted' }, 'No local runs yet. Use the Run page to send a file.'));
+    return;
+  }
+  const ok = runs.filter((r) => r.integrity_ok).length;
+  const meanGoodput = runs.reduce((n, r) => n + r.goodput_kbps, 0) / runs.length;
+  const retx = runs.reduce((n, r) => n + r.retransmissions, 0);
+  const bytes = runs.reduce((n, r) => n + r.bytes, 0);
+  const stats = [
+    ['Runs', String(runs.length)],
+    ['Integrity', `${ok}/${runs.length} pass`],
+    ['Mean goodput', `${fmt(meanGoodput, 0)} kbps`],
+    ['Data sent', prettySize(bytes)],
+    ['Retransmissions', String(retx)],
+  ];
+  const recent = runs.slice(0, 5);
+  box.replaceChildren(
+    h('div', { class: 'kpis flat' }, ...stats.map(([k, v]) => h('div', { class: 'kpi' }, h('small', {}, k), h('b', {}, v)))),
+    h('div', { class: 'scroll' }, h('table', { class: 'data' },
+      h('thead', {}, h('tr', {}, ...['Time', 'File', 'Bytes', 'Retx', 'kbps', 'OK'].map((t) => h('th', {}, t)))),
+      h('tbody', {}, ...recent.map((r) => h('tr', {}, ...[r.timestamp, r.filename, r.bytes, r.retransmissions, r.goodput_kbps, r.integrity_ok ? 'yes' : 'NO'].map((v) => h('td', {}, String(v)))))))));
+}
 
 /** How often the page checks the backend for newer experiment results. */
 const REFRESH_MS = 8000;
@@ -358,8 +417,9 @@ async function refreshData() {
     renderOverview(team, pairs, res.data.meta);
     renderExperiments(rows, pairs);
     renderTuning(res.data, pairs);
+    const label = REPORT_LABELS[res.source] ?? res.source;
     $('data-status').textContent = res.modified
-      ? `Live data: ${res.source}, last recorded ${res.modified.replace('T', ' ')}. Updates automatically.`
+      ? `Latest report: ${label} (${res.source}), recorded ${res.modified.replace('T', ' ')}. Updates automatically.`
       : `Data: ${res.source}`;
   } catch (err) {
     $('data-status').textContent = `No experiment results available yet (${err.message}).`;
@@ -380,7 +440,12 @@ async function main() {
     $('data-status').textContent = `Could not load team data: ${err.message}`;
   }
   if (team) await refreshData();
-  setInterval(() => { if (team && !document.hidden) refreshData(); }, REFRESH_MS);
+  refreshLive();
+  setInterval(() => {
+    if (document.hidden) return;
+    if (team) refreshData();
+    refreshLive();
+  }, REFRESH_MS);
 }
 
 main();

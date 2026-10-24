@@ -29,7 +29,7 @@ from src.sender import send_file
 
 LOOPBACK = "127.0.0.1"
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024
-HISTORY_LIMIT = 50
+HISTORY_LIMIT = 200
 RECEIVER_STARTUP_DELAY_S = 0.15
 RECEIVER_TIMEOUT_S = 30.0
 
@@ -147,7 +147,13 @@ def build_sample(sample_id: str) -> tuple:
 RESULTS_DIR = Path(__file__).resolve().parents[1] / "results"
 # Checked in order; the first file that exists is served. The experiment scripts
 # write these files, so the dashboard always shows whatever they last recorded.
-RESULT_FILES = ("experiment_bottleneck.json", "experiment_tuned.json", "experiment_repeats.json")
+RESULT_FILES = (
+    "experiment_bottleneck_tuned.json",
+    "experiment_bottleneck.json",
+    "experiment_tuned.json",
+    "experiment_repeats.json",
+)
+TRANSFER_LOG = RESULTS_DIR / "transfer_log.jsonl"
 
 
 def load_results() -> Dict[str, object]:
@@ -181,22 +187,50 @@ def _free_udp_port() -> int:
 
 
 class TransferHistory:
-    """Thread-safe, bounded, in-memory record of completed transfers."""
+    """Thread-safe, bounded record of completed transfers, persisted as JSON lines.
 
-    def __init__(self, limit: int = HISTORY_LIMIT) -> None:
+    Each completed transfer is appended to ``log_path`` (one JSON object per line) and the
+    most recent entries are reloaded on start, so the dashboard keeps showing local runs
+    across server restarts. Set ``log_path`` to ``None`` to keep history in memory only.
+    """
+
+    def __init__(self, limit: int = HISTORY_LIMIT, log_path: Optional[Path] = None) -> None:
         self._items: Deque[dict] = deque(maxlen=limit)
         self._lock = threading.Lock()
+        self.log_path = log_path
+        self._load()
+
+    def _load(self) -> None:
+        """Read the tail of the log file; unreadable lines are skipped, not fatal."""
+        if self.log_path is None or not self.log_path.is_file():
+            return
+        try:
+            lines = self.log_path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return
+        for line in lines[-self._items.maxlen:]:
+            try:
+                self._items.appendleft(json.loads(line))
+            except ValueError:
+                continue
 
     def add(self, record: dict) -> None:
         with self._lock:
             self._items.appendleft(record)
+            if self.log_path is not None:
+                try:
+                    self.log_path.parent.mkdir(parents=True, exist_ok=True)
+                    with self.log_path.open("a", encoding="utf-8") as fh:
+                        fh.write(json.dumps(record) + "\n")
+                except OSError:
+                    pass  # a read-only disk must not fail a completed transfer
 
     def list(self) -> List[dict]:
         with self._lock:
             return list(self._items)
 
 
-HISTORY = TransferHistory()
+HISTORY = TransferHistory(log_path=TRANSFER_LOG)
 # Receiver/sender share loopback ports; serialise runs to keep results clean.
 _RUN_LOCK = threading.Lock()
 

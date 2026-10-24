@@ -110,6 +110,7 @@ main {
 
 .kpis { display: grid; gap: var(--s3); grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-top: var(--s4); }
 .kpi { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s3) var(--s4); }
+.kpis.flat { margin: 0 0 var(--s3); }
 .kpi small { color: var(--muted); display: block; font-size: .78rem; }
 .kpi b { display: block; font: 650 clamp(1.15rem, 4.6vw, 1.6rem)/1.2 var(--font-mono); overflow-wrap: anywhere; letter-spacing: -.02em; }
 .kpi span { display: block; font-size: .78rem; color: var(--muted); }

@@ -18,6 +18,13 @@ from backend.service import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _isolated_history(tmp_path, monkeypatch):
+    """Send transfer-log writes to a temp file so tests never touch results/."""
+    from backend.service import HISTORY
+    monkeypatch.setattr(HISTORY, "log_path", tmp_path / "log.jsonl")
+
+
 @pytest.fixture(scope="module")
 def base_url():
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -135,3 +142,15 @@ def test_load_results_missing_raises(tmp_path, monkeypatch):
     monkeypatch.setattr(service, "RESULTS_DIR", tmp_path)
     with pytest.raises(TransferError):
         service.load_results()
+
+
+def test_history_persists_to_log_and_reloads(tmp_path):
+    from backend.service import TransferHistory
+    log = tmp_path / "t.jsonl"
+    first = TransferHistory(log_path=log)
+    first.add({"filename": "a", "integrity_ok": True})
+    first.add({"filename": "b", "integrity_ok": True})
+    reloaded = TransferHistory(log_path=log)
+    assert [r["filename"] for r in reloaded.list()] == ["b", "a"]  # newest first
+    log.write_text(log.read_text() + "not json\n")
+    assert len(TransferHistory(log_path=log).list()) == 2  # bad lines skipped

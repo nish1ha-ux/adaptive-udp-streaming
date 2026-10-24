@@ -10,3 +10,6 @@ venv/
 htmlcov/
 .DS_Store
 Thumbs.db
+
+# Local loopback run log (written by the test server)
+results/transfer_log.jsonl
