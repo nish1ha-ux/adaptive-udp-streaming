@@ -39,6 +39,8 @@
       </header>
       <div class="verdict" id="verdict" role="status"></div>
       <div class="kpis" id="kpis"></div>
+      <h2 class="section-title">Network conditions tested</h2>
+      <div class="conditions" id="conditions"></div>
       <div class="card">
         <div class="card-head"><h2>Goodput by condition</h2><div class="legend" id="legend"></div></div>
         <div id="chart-goodput" class="chart" role="img" aria-label="Goodput by experiment, fixed versus adaptive"></div>
@@ -61,6 +63,14 @@
       <div class="card">
         <h2>Raw data</h2>
         <div class="scroll"><table id="table" class="data"></table></div>
+      </div>
+      <div class="card" id="tuning" hidden>
+        <h2>Controller tuning</h2>
+        <p class="muted" id="tuning-note"></p>
+        <h3>Default vs. tuned configuration (evaluation seeds)</h3>
+        <div class="scroll"><table class="data" id="tuning-compare"></table></div>
+        <h3>Every configuration tried (tuning seeds)</h3>
+        <div class="scroll"><table class="data" id="tuning-grid"></table></div>
       </div>
     </section>
 
@@ -119,9 +129,7 @@
         <p class="lede">Who built what, taken from the repository history and the project proposal.</p>
       </header>
       <div class="people" id="people"></div>
-      <div class="card" id="web"></div>
-      <p class="muted foot" id="activity-note"></p>
-    </section>
+      <div class="card" id="web"></div>    </section>
   </main>
 
   <script type="module" src="js/app.js"></script>

@@ -4,7 +4,16 @@
     "course": "CS-30003 · Coding Assignment 1",
     "track": "Path B — own proposal",
     "repository": "https://github.com/nish1ha-ux/adaptive-udp-streaming",
-    "claim": "Adaptive transmission will provide better and more stable streaming performance than fixed-rate UDP under varying conditions."
+    "claim": "Adaptive transmission will provide better and more stable streaming performance than fixed-rate UDP under varying conditions.",
+    "summary": "A reliable streaming protocol built directly on UDP sockets. The sender adapts its transmission rate to measured loss, RTT and jitter, and a custom emulator recreates poor network conditions so adaptive and fixed-rate sending can be compared with repeatable experiments.",
+    "highlights": [
+      "Custom AUDP packet format with sequence numbers and SHA-256 checksums",
+      "Acknowledgements, timeout-based retransmission and RTT/RTO estimation",
+      "Network emulator for packet loss, delay and jitter, seeded for repeatability",
+      "Adaptive rate control compared against a fixed-rate baseline",
+      "End-to-end stream reconstruction verified by SHA-256 hash",
+      "Responsive dashboard and local test server for running and presenting the experiments"
+    ]
   },
   "members": [
     {
@@ -58,13 +67,5 @@
         "Planned: written analysis of the claim, including conditions where fixed-rate wins"
       ]
     }
-  ],
-  "web": {
-    "title": "Dashboard & local test server",
-    "contributions": [
-      "Local test server with a JSON API for loopback transfers (backend/)",
-      "Responsive dashboard for measured results, protocol reference and credits (frontend/)",
-      "Direction, design decisions and review: Nishtha Bhushan. See AI-USE.md for the full account."
-    ]
-  }
+  ]
 }

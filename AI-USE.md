@@ -33,7 +33,6 @@ Accepting a proposal is recorded here as a user decision, but the original sugge
 - Predefined sample files (`SAMPLES` in `backend/service.py`) so a transfer needs no upload; requested by Nishtha.
 - `experiments/run_repeats.py`: wrapper that repeats Subham's existing trial runner with seeds 1–5 and reports
   mean and standard deviation. It calls his unmodified `run_single_trial`; it adds no measurement logic.
-- `scripts/build_data.py`: builds `frontend/data/activity.json` (commit counts) from `git log`.
 - README sections describing the above.
 
 ## What the AI did not write

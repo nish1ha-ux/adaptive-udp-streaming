@@ -78,6 +78,8 @@ function renderOverview(team, pairs, meta) {
   $('kpis').replaceChildren(...kpis.map(([label, value, note]) =>
     h('div', { class: 'kpi' }, h('small', {}, label), h('b', {}, value), h('span', {}, note))));
 
+  renderConditions(pairs, compare(pairs).detail);
+
   $('legend').replaceChildren(
     h('span', { style: '--c: var(--fixed)' }, 'Fixed rate'),
     h('span', { style: '--c: var(--adaptive)' }, 'Adaptive'),
@@ -88,6 +90,25 @@ function renderOverview(team, pairs, meta) {
     `Bars show the mean of ${meta.repeats} seeded runs; whiskers are one standard deviation. ` +
     'Both modes see identical loss patterns for each seed. All transfers run through the project’s own ' +
     'emulator on one machine, so absolute numbers depend on that machine.';
+}
+
+/**
+ * One card per tested condition: the emulator settings and how adaptive goodput
+ * compares with fixed-rate (colour-coded chip with the percentage change).
+ */
+function renderConditions(pairs, detail) {
+  const sign = (n) => `${n > 0 ? '+' : ''}${fmt(n * 100, 0)}%`;
+  $('conditions').replaceChildren(...pairs.map((p, i) => {
+    const d = detail[i];
+    const [code, ...rest] = p.name.split(/\s[—-]\s/);
+    return h('article', { class: 'cond' },
+      h('header', {}, h('b', {}, code), h('span', { class: `chip ${d.outcome}` }, `${sign(d.change)} goodput`)),
+      h('p', { class: 'cond-name' }, rest.join(' ')),
+      h('dl', {},
+        h('dt', {}, 'Loss'), h('dd', {}, `${fmt(p.fixed.loss_configured * 100, 0)}%`),
+        h('dt', {}, 'Delay'), h('dd', {}, `${fmt(p.fixed.base_delay_ms, 0)} ms`),
+        h('dt', {}, 'Jitter'), h('dd', {}, `${fmt(p.fixed.jitter_ms, 0)} ms`)));
+  }));
 }
 
 /** Draw one metric as fixed-vs-adaptive grouped bars (with error bars when *_sd exists). */
@@ -126,6 +147,38 @@ function renderExperiments(rows, pairs) {
     ['Integrity', (r) => (r.integrity_verified ? 'ok' : 'FAIL'), false],
   ];
   fillTable($('table'), cols, rows);
+}
+
+/**
+ * Show how the adaptive controller was configured. Both the default configuration
+ * and every grid point that was tried are listed, so the chosen setting is never
+ * presented without the alternatives.
+ */
+function renderTuning(data, pairs) {
+  if (!data.tuning_grid) return;
+  const m = data.meta;
+  $('tuning').hidden = false;
+  $('tuning-note').textContent =
+    `The adaptive bars on this site use the configuration chosen on tuning seeds ${m.tune_seeds.join(', ')}. ` +
+    `Results are measured on separate seeds ${m.eval_seeds.join(', ')}, which were not used to choose it. ` +
+    `Chosen: RTT ${m.tuned_config.rtt_threshold_ms} ms, jitter ${m.tuned_config.jitter_threshold_ms} ms, ` +
+    `loss ${m.tuned_config.loss_threshold * 100}%. Default: RTT ${m.default_config.rtt_threshold_ms} ms, ` +
+    `jitter ${m.default_config.jitter_threshold_ms} ms, loss ${m.default_config.loss_threshold * 100}%.`;
+
+  const def = Object.fromEntries(data.default_adaptive_summary.map((r) => [r.experiment, r]));
+  fillTable($('tuning-compare'), [
+    ['Condition', (p) => p.name, false],
+    ['Fixed kbps', (p) => fmt(p.fixed.goodput_kbps, 1), true],
+    ['Default adaptive kbps', (p) => fmt(def[p.name].goodput_kbps, 1), true],
+    ['Tuned adaptive kbps', (p) => fmt(p.adaptive.goodput_kbps, 1), true],
+  ], pairs);
+
+  fillTable($('tuning-grid'), [
+    ['RTT ms', (g) => String(g.config.rtt_threshold_ms), true],
+    ['Jitter ms', (g) => String(g.config.jitter_threshold_ms), true],
+    ['Loss', (g) => `${g.config.loss_threshold * 100}%`, true],
+    ['Score (adaptive ÷ fixed goodput)', (g) => fmt(g.score, 3), true],
+  ], [...data.tuning_grid].sort((a, b) => b.score - a.score));
 }
 
 /** Render a table from column definitions: [header, getter, isNumeric]. */
@@ -172,7 +225,7 @@ function renderProtocol() {
 
 /* ---------------------------------------------------------------- credits */
 
-function renderCredits(team, activity) {
+function renderCredits(team) {
   const initials = (name) => name.split(' ').map((p) => p[0]).slice(0, 2).join('');
   const bullets = (list) => h('ul', { class: 'plain' }, ...list.map((t) => h('li', {}, t)));
 
@@ -180,24 +233,21 @@ function renderCredits(team, activity) {
     const link = m.github
       ? h('a', { href: `https://github.com/${m.github}`, rel: 'noopener' }, `@${m.github}`)
       : h('span', { class: 'muted' }, 'GitHub handle not listed');
-    // Commit counts and recent commits are generated from git history (scripts/build_data.py).
-    const log = activity?.members?.[m.name];
-    const recent = log?.recent?.length
-      ? h('ul', { class: 'commit-list' }, ...log.recent.map((c) => h('li', {}, h('code', {}, c.sha), `${c.date} · ${c.subject}`)))
-      : h('p', { class: 'muted' }, 'No commits in the repository yet.');
     return h('article', { class: 'person' },
       h('header', {}, h('span', { class: 'avatar', 'aria-hidden': 'true' }, initials(m.name)),
         h('div', {}, h('h2', {}, m.name), h('div', { class: 'meta' }, `${m.roll} · `, link))),
       h('p', { class: 'role' }, m.role),
-      bullets(m.contributions),
-      h('div', { class: 'stat' }, h('span', { class: 'count' }, String(log?.commits ?? 0)), 'commits in the repository'),
-      recent);
+      bullets(m.contributions));
   }));
 
-  $('web').replaceChildren(h('h2', {}, team.web.title), bullets(team.web.contributions));
-  $('activity-note').textContent = activity
-    ? `Commit data generated from git history: ${activity.total_commits} commits across all branches.`
-    : '';
+  // Overall project summary, shown beneath the individual credits.
+  const p = team.project;
+  $('web').replaceChildren(
+    h('h2', {}, p.title),
+    h('p', { class: 'muted' }, `${p.course} · ${p.track}`),
+    h('p', {}, p.summary),
+    bullets(p.highlights),
+    h('p', { class: 'muted foot' }, h('a', { href: p.repository, rel: 'noopener' }, 'Source repository')));
 }
 
 /* ------------------------------------------------------------- live runs */
@@ -290,17 +340,17 @@ async function main() {
   window.addEventListener('hashchange', route);
   route();
   try {
-    // activity.json is optional: the page still works without commit data.
-    const [repeats, team, activity] = await Promise.all([
-      loadJson('data/repeats.json'),
+    // Prefer the tuned experiment file when present; fall back to the default-config run.
+    const [repeats, team] = await Promise.all([
+      loadJson('data/tuned.json').catch(() => loadJson('data/repeats.json')),
       loadJson('data/team.json'),
-      loadJson('data/activity.json').catch(() => null),
     ]);
     const rows = repeats.summary;
     const pairs = pairByExperiment(rows);
     renderOverview(team, pairs, repeats.meta);
     renderExperiments(rows, pairs);
-    renderCredits(team, activity);
+    renderTuning(repeats, pairs);
+    renderCredits(team);
   } catch (err) {
     $('verdict').textContent = `Could not load project data: ${err.message}`;
   }
