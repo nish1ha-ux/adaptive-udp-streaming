@@ -1,0 +1,446 @@
+{
+  "meta": {
+    "size_kb": 100,
+    "tune_seeds": [
+      101,
+      102,
+      103
+    ],
+    "eval_seeds": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "repeats": 5,
+    "seeds": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "payload_seed": 1337,
+    "initial_rate_pps": 200.0,
+    "default_config": {
+      "rtt_threshold_ms": 80.0,
+      "jitter_threshold_ms": 20.0,
+      "loss_threshold": 0.03
+    },
+    "tuned_config": {
+      "rtt_threshold_ms": 400.0,
+      "jitter_threshold_ms": 200.0,
+      "loss_threshold": 0.15
+    },
+    "grid": {
+      "rtt_threshold_ms": [
+        80.0,
+        400.0
+      ],
+      "jitter_threshold_ms": [
+        20.0,
+        200.0
+      ],
+      "loss_threshold": [
+        0.03,
+        0.15
+      ]
+    },
+    "elapsed_s": 608.5
+  },
+  "tuning_grid": [
+    {
+      "config": {
+        "rtt_threshold_ms": 80.0,
+        "jitter_threshold_ms": 20.0,
+        "loss_threshold": 0.03
+      },
+      "score": 0.4385,
+      "ratios": [
+        1.074,
+        0.218,
+        0.205,
+        0.257
+      ]
+    },
+    {
+      "config": {
+        "rtt_threshold_ms": 80.0,
+        "jitter_threshold_ms": 20.0,
+        "loss_threshold": 0.15
+      },
+      "score": 0.5467,
+      "ratios": [
+        1.065,
+        0.664,
+        0.205,
+        0.253
+      ]
+    },
+    {
+      "config": {
+        "rtt_threshold_ms": 80.0,
+        "jitter_threshold_ms": 200.0,
+        "loss_threshold": 0.03
+      },
+      "score": 0.449,
+      "ratios": [
+        1.125,
+        0.21,
+        0.205,
+        0.256
+      ]
+    },
+    {
+      "config": {
+        "rtt_threshold_ms": 80.0,
+        "jitter_threshold_ms": 200.0,
+        "loss_threshold": 0.15
+      },
+      "score": 0.5551,
+      "ratios": [
+        1.093,
+        0.668,
+        0.205,
+        0.255
+      ]
+    },
+    {
+      "config": {
+        "rtt_threshold_ms": 400.0,
+        "jitter_threshold_ms": 20.0,
+        "loss_threshold": 0.03
+      },
+      "score": 0.4431,
+      "ratios": [
+        1.104,
+        0.21,
+        0.204,
+        0.254
+      ]
+    },
+    {
+      "config": {
+        "rtt_threshold_ms": 400.0,
+        "jitter_threshold_ms": 20.0,
+        "loss_threshold": 0.15
+      },
+      "score": 0.5804,
+      "ratios": [
+        1.078,
+        0.677,
+        0.306,
+        0.261
+      ]
+    },
+    {
+      "config": {
+        "rtt_threshold_ms": 400.0,
+        "jitter_threshold_ms": 200.0,
+        "loss_threshold": 0.03
+      },
+      "score": 0.4443,
+      "ratios": [
+        1.096,
+        0.219,
+        0.204,
+        0.259
+      ]
+    },
+    {
+      "config": {
+        "rtt_threshold_ms": 400.0,
+        "jitter_threshold_ms": 200.0,
+        "loss_threshold": 0.15
+      },
+      "score": 0.5869,
+      "ratios": [
+        1.094,
+        0.669,
+        0.315,
+        0.271
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "experiment": "E1 - Ideal",
+      "mode": "fixed",
+      "loss_configured": 0.0,
+      "base_delay_ms": 0.0,
+      "jitter_ms": 0.0,
+      "repeats": 5,
+      "integrity_verified": true,
+      "goodput_kbps": 1098.855,
+      "goodput_kbps_sd": 36.363,
+      "duration_s": 0.746,
+      "duration_s_sd": 0.026,
+      "retransmissions": 0.0,
+      "retransmissions_sd": 0.0,
+      "avg_rtt_ms": 1.001,
+      "avg_rtt_ms_sd": 0.053,
+      "avg_jitter_ms": 0.26,
+      "avg_jitter_ms_sd": 0.021,
+      "final_rate_pps": 200.0,
+      "final_rate_pps_sd": 0.0,
+      "packets_sent": 74.0,
+      "packets_sent_sd": 0.0
+    },
+    {
+      "experiment": "E2 - Mild impairment",
+      "mode": "fixed",
+      "loss_configured": 0.02,
+      "base_delay_ms": 20.0,
+      "jitter_ms": 5.0,
+      "repeats": 5,
+      "integrity_verified": true,
+      "goodput_kbps": 784.565,
+      "goodput_kbps_sd": 8.234,
+      "duration_s": 1.044,
+      "duration_s_sd": 0.011,
+      "retransmissions": 2.8,
+      "retransmissions_sd": 1.304,
+      "avg_rtt_ms": 41.993,
+      "avg_rtt_ms_sd": 0.386,
+      "avg_jitter_ms": 3.568,
+      "avg_jitter_ms_sd": 0.138,
+      "final_rate_pps": 200.0,
+      "final_rate_pps_sd": 0.0,
+      "packets_sent": 74.0,
+      "packets_sent_sd": 0.0
+    },
+    {
+      "experiment": "E3 - Moderate impairment",
+      "mode": "fixed",
+      "loss_configured": 0.05,
+      "base_delay_ms": 50.0,
+      "jitter_ms": 15.0,
+      "repeats": 5,
+      "integrity_verified": true,
+      "goodput_kbps": 625.25,
+      "goodput_kbps_sd": 90.126,
+      "duration_s": 1.332,
+      "duration_s_sd": 0.192,
+      "retransmissions": 11.4,
+      "retransmissions_sd": 2.966,
+      "avg_rtt_ms": 101.841,
+      "avg_rtt_ms_sd": 1.267,
+      "avg_jitter_ms": 11.755,
+      "avg_jitter_ms_sd": 1.309,
+      "final_rate_pps": 200.0,
+      "final_rate_pps_sd": 0.0,
+      "packets_sent": 74.0,
+      "packets_sent_sd": 0.0
+    },
+    {
+      "experiment": "E4 - High impairment",
+      "mode": "fixed",
+      "loss_configured": 0.1,
+      "base_delay_ms": 100.0,
+      "jitter_ms": 30.0,
+      "repeats": 5,
+      "integrity_verified": true,
+      "goodput_kbps": 559.54,
+      "goodput_kbps_sd": 52.593,
+      "duration_s": 1.475,
+      "duration_s_sd": 0.142,
+      "retransmissions": 20.6,
+      "retransmissions_sd": 4.722,
+      "avg_rtt_ms": 203.62,
+      "avg_rtt_ms_sd": 0.816,
+      "avg_jitter_ms": 21.436,
+      "avg_jitter_ms_sd": 2.013,
+      "final_rate_pps": 200.0,
+      "final_rate_pps_sd": 0.0,
+      "packets_sent": 74.0,
+      "packets_sent_sd": 0.0
+    },
+    {
+      "experiment": "E1 - Ideal",
+      "mode": "adaptive",
+      "loss_configured": 0.0,
+      "base_delay_ms": 0.0,
+      "jitter_ms": 0.0,
+      "repeats": 5,
+      "integrity_verified": true,
+      "goodput_kbps": 1200.406,
+      "goodput_kbps_sd": 54.043,
+      "duration_s": 0.684,
+      "duration_s_sd": 0.03,
+      "retransmissions": 0.0,
+      "retransmissions_sd": 0.0,
+      "avg_rtt_ms": 0.654,
+      "avg_rtt_ms_sd": 0.111,
+      "avg_jitter_ms": 0.238,
+      "avg_jitter_ms_sd": 0.045,
+      "final_rate_pps": 310.0,
+      "final_rate_pps_sd": 0.0,
+      "packets_sent": 74.0,
+      "packets_sent_sd": 0.0
+    },
+    {
+      "experiment": "E2 - Mild impairment",
+      "mode": "adaptive",
+      "loss_configured": 0.02,
+      "base_delay_ms": 20.0,
+      "jitter_ms": 5.0,
+      "repeats": 5,
+      "integrity_verified": true,
+      "goodput_kbps": 516.742,
+      "goodput_kbps_sd": 54.002,
+      "duration_s": 1.599,
+      "duration_s_sd": 0.161,
+      "retransmissions": 2.8,
+      "retransmissions_sd": 1.304,
+      "avg_rtt_ms": 41.815,
+      "avg_rtt_ms_sd": 0.19,
+      "avg_jitter_ms": 3.781,
+      "avg_jitter_ms_sd": 0.285,
+      "final_rate_pps": 130.136,
+      "final_rate_pps_sd": 27.948,
+      "packets_sent": 74.0,
+      "packets_sent_sd": 0.0
+    },
+    {
+      "experiment": "E3 - Moderate impairment",
+      "mode": "adaptive",
+      "loss_configured": 0.05,
+      "base_delay_ms": 50.0,
+      "jitter_ms": 15.0,
+      "repeats": 5,
+      "integrity_verified": true,
+      "goodput_kbps": 152.04,
+      "goodput_kbps_sd": 27.18,
+      "duration_s": 5.509,
+      "duration_s_sd": 0.85,
+      "retransmissions": 11.4,
+      "retransmissions_sd": 2.966,
+      "avg_rtt_ms": 102.119,
+      "avg_rtt_ms_sd": 1.127,
+      "avg_jitter_ms": 11.305,
+      "avg_jitter_ms_sd": 1.126,
+      "final_rate_pps": 65.294,
+      "final_rate_pps_sd": 7.602,
+      "packets_sent": 74.0,
+      "packets_sent_sd": 0.0
+    },
+    {
+      "experiment": "E4 - High impairment",
+      "mode": "adaptive",
+      "loss_configured": 0.1,
+      "base_delay_ms": 100.0,
+      "jitter_ms": 30.0,
+      "repeats": 5,
+      "integrity_verified": true,
+      "goodput_kbps": 154.033,
+      "goodput_kbps_sd": 17.676,
+      "duration_s": 5.373,
+      "duration_s_sd": 0.601,
+      "retransmissions": 20.6,
+      "retransmissions_sd": 4.722,
+      "avg_rtt_ms": 204.429,
+      "avg_rtt_ms_sd": 2.188,
+      "avg_jitter_ms": 23.355,
+      "avg_jitter_ms_sd": 2.277,
+      "final_rate_pps": 64.0,
+      "final_rate_pps_sd": 8.944,
+      "packets_sent": 74.0,
+      "packets_sent_sd": 0.0
+    }
+  ],
+  "default_adaptive_summary": [
+    {
+      "experiment": "E1 - Ideal",
+      "mode": "adaptive",
+      "loss_configured": 0.0,
+      "base_delay_ms": 0.0,
+      "jitter_ms": 0.0,
+      "repeats": 5,
+      "integrity_verified": true,
+      "goodput_kbps": 1211.922,
+      "goodput_kbps_sd": 29.701,
+      "duration_s": 0.676,
+      "duration_s_sd": 0.017,
+      "retransmissions": 0.0,
+      "retransmissions_sd": 0.0,
+      "avg_rtt_ms": 0.715,
+      "avg_rtt_ms_sd": 0.165,
+      "avg_jitter_ms": 0.285,
+      "avg_jitter_ms_sd": 0.119,
+      "final_rate_pps": 310.0,
+      "final_rate_pps_sd": 0.0,
+      "packets_sent": 74.0,
+      "packets_sent_sd": 0.0
+    },
+    {
+      "experiment": "E2 - Mild impairment",
+      "mode": "adaptive",
+      "loss_configured": 0.02,
+      "base_delay_ms": 20.0,
+      "jitter_ms": 5.0,
+      "repeats": 5,
+      "integrity_verified": true,
+      "goodput_kbps": 149.381,
+      "goodput_kbps_sd": 32.613,
+      "duration_s": 5.66,
+      "duration_s_sd": 1.017,
+      "retransmissions": 2.8,
+      "retransmissions_sd": 1.304,
+      "avg_rtt_ms": 41.971,
+      "avg_rtt_ms_sd": 0.422,
+      "avg_jitter_ms": 3.625,
+      "avg_jitter_ms_sd": 0.399,
+      "final_rate_pps": 34.48,
+      "final_rate_pps_sd": 10.018,
+      "packets_sent": 74.0,
+      "packets_sent_sd": 0.0
+    },
+    {
+      "experiment": "E3 - Moderate impairment",
+      "mode": "adaptive",
+      "loss_configured": 0.05,
+      "base_delay_ms": 50.0,
+      "jitter_ms": 15.0,
+      "repeats": 5,
+      "integrity_verified": true,
+      "goodput_kbps": 130.435,
+      "goodput_kbps_sd": 7.914,
+      "duration_s": 6.298,
+      "duration_s_sd": 0.368,
+      "retransmissions": 11.4,
+      "retransmissions_sd": 2.966,
+      "avg_rtt_ms": 102.026,
+      "avg_rtt_ms_sd": 1.163,
+      "avg_jitter_ms": 10.954,
+      "avg_jitter_ms_sd": 0.97,
+      "final_rate_pps": 10.0,
+      "final_rate_pps_sd": 0.0,
+      "packets_sent": 74.0,
+      "packets_sent_sd": 0.0
+    },
+    {
+      "experiment": "E4 - High impairment",
+      "mode": "adaptive",
+      "loss_configured": 0.1,
+      "base_delay_ms": 100.0,
+      "jitter_ms": 30.0,
+      "repeats": 5,
+      "integrity_verified": true,
+      "goodput_kbps": 139.28,
+      "goodput_kbps_sd": 17.372,
+      "duration_s": 5.949,
+      "duration_s_sd": 0.679,
+      "retransmissions": 20.8,
+      "retransmissions_sd": 4.604,
+      "avg_rtt_ms": 204.101,
+      "avg_rtt_ms_sd": 0.908,
+      "avg_jitter_ms": 23.339,
+      "avg_jitter_ms_sd": 0.954,
+      "final_rate_pps": 10.0,
+      "final_rate_pps_sd": 0.0,
+      "packets_sent": 74.0,
+      "packets_sent_sd": 0.0
+    }
+  ]
+}

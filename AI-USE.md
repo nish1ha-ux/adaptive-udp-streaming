@@ -33,6 +33,7 @@ Accepting a proposal is recorded here as a user decision, but the original sugge
 - Predefined sample files (`SAMPLES` in `backend/service.py`) so a transfer needs no upload; requested by Nishtha.
 - `experiments/run_repeats.py`: wrapper that repeats Subham's existing trial runner with seeds 1–5 and reports
   mean and standard deviation. It calls his unmodified `run_single_trial`; it adds no measurement logic.
+- `experiments/run_tuned.py`: searches the rate controller's own threshold settings on tuning seeds (101-103) and re-measures the chosen setting on held-out seeds (1-5). It edits no protocol code, and every grid point is saved in `results/experiment_tuned.json`.
 - README sections describing the above.
 
 ## What the AI did not write
