@@ -30,14 +30,16 @@ import socket
 import sys
 import time
 from pathlib import Path
-
 from src.packet import (
+    HEADER_SIZE,
     MAX_DATAGRAM_SIZE,
+    MAX_PAYLOAD_SIZE,
     TYPE_ACK,
     TYPE_DATA,
     TYPE_END,
     PacketError,
     create_ack_packet,
+    create_packet,
     decode_end_payload,
     decode_packet,
     encode_packet,
@@ -55,6 +57,8 @@ def receive_file(
     post_end_timeout=5.0,
     arq="stop-and-wait",
     linger_timeout=1.0,
+    expected_packets=None,
+    send_ack=True,
 ):
     """Listen for incoming packets, send ACKs, and reconstruct the file.
 
@@ -82,13 +86,15 @@ def receive_file(
         raise ValueError(f"Post-END timeout cannot be negative, got {post_end_timeout!r}.")
     if linger_timeout < 0:
         raise ValueError(f"Linger timeout cannot be negative, got {linger_timeout!r}.")
+    if not send_ack:
+        arq = "none"
     if arq not in ("stop-and-wait", "none"):
         raise ValueError(f"Unsupported ARQ mode: {arq!r}. Valid modes are 'stop-and-wait' and 'none'.")
 
     received: dict[int, bytes] = {}
     duplicates: int = 0
     end_received: bool = False
-    expected_packets: int | None = None
+    expected_packets: int | None = expected_packets
     last_sender_address = None
 
     receiver_arq = StopAndWaitReceiver() if arq == "stop-and-wait" else None
@@ -327,6 +333,15 @@ def main():
         "--linger-timeout", type=float, default=1.0,
         help="Seconds to linger after completion for lost END ACKs (default: 1.0)",
     )
+    parser.add_argument(
+        "--expected-packets", type=int, default=None,
+        help="Expected total DATA packets (optional)",
+    )
+    parser.add_argument(
+        "--no-ack",
+        action="store_true",
+        help="Disable sending ACK packets back to sender",
+    )
 
     args = parser.parse_args()
 
@@ -339,6 +354,8 @@ def main():
             args.post_end_timeout,
             arq=args.arq,
             linger_timeout=args.linger_timeout,
+            expected_packets=args.expected_packets,
+            send_ack=not args.no_ack,
         )
     except (ValueError, TimeoutError, RuntimeError) as exc:
         logger.error("%s", exc)

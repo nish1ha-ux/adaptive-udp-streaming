@@ -305,13 +305,13 @@ Test coverage includes:
 
 - [x] UDP communication
 - [x] Custom packet format
-- [ ] Reliability mechanism
-- [ ] RTT measurement
-- [ ] Network emulator
-- [ ] Adaptive rate control
-- [x] Testing (packet & transfer)
-- [ ] Performance experiments
-- [ ] Final documentation
+- [x] Reliability mechanism
+- [x] RTT measurement
+- [x] Network emulator
+- [x] Adaptive rate control
+- [x] Testing
+- [x] Performance experiments
+- [x] Final documentation
 
 ---
 
