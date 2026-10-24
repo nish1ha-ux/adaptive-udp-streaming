@@ -1,0 +1,29 @@
+name: Open promotion pull request (development to main)
+
+# Manual only. Opens a pull request from development into main for a person to review and
+# merge. Nothing is merged into main automatically.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  open-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open the pull request if none is open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          existing=$(gh pr list --repo "$REPO" --base main --head development --state open --json number --jq length)
+          if [ "$existing" = "0" ]; then
+            gh pr create --repo "$REPO" --base main --head development \
+              --title "Promote development to main" \
+              --body "Manual promotion of the tested development branch. Review, then merge."
+          else
+            echo "A promotion pull request is already open."
+          fi

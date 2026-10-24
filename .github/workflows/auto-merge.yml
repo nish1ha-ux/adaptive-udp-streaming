@@ -1,0 +1,61 @@
+name: Auto-merge into development
+
+# Every pull request into development is tested. If the tests pass and the branch merges
+# cleanly, it is merged automatically with a merge commit, so each author's commits stay
+# under their own name. Conflicts or failing tests leave the pull request open for its author.
+# Promoting development to main is manual (see promote.yml).
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches: [development]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run tests
+        run: python -m pytest tests/ -q
+
+  merge:
+    needs: test
+    # Skip drafts, and pull requests from forks (their token cannot merge).
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge when mergeable
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # GitHub computes mergeability lazily; poll briefly until it is known.
+          state=UNKNOWN
+          for _ in 1 2 3 4 5 6; do
+            state=$(gh pr view "$PR" --repo "$REPO" --json mergeable --jq .mergeable)
+            [ "$state" != "UNKNOWN" ] && break
+            sleep 5
+          done
+          if [ "$state" = "MERGEABLE" ]; then
+            gh pr merge "$PR" --repo "$REPO" --merge
+          else
+            gh pr comment "$PR" --repo "$REPO" --body "Tests passed but this pull request was not merged automatically because it is $state. Update the branch from development, resolve any conflicts and push; the workflow runs again."
+          fi
