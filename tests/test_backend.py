@@ -119,8 +119,15 @@ def test_api_results_reads_latest_file_from_disk(base_url, tmp_path, monkeypatch
     (tmp_path / "experiment_repeats.json").write_text('{"meta": {}, "summary": [1]}', encoding="utf-8")
     first = service.load_results()
     assert first["source"] == "experiment_repeats.json" and first["data"]["summary"] == [1]
-    (tmp_path / "experiment_tuned.json").write_text('{"meta": {}, "summary": [2]}', encoding="utf-8")
-    assert service.load_results()["data"]["summary"] == [2]  # newer file wins, no restart needed
+    import os
+    older = tmp_path / "experiment_repeats.json"
+    newer = tmp_path / "experiment_tuned.json"
+    newer.write_text('{"meta": {}, "summary": [2]}', encoding="utf-8")
+    os.utime(older, (1_000_000_000, 1_000_000_000))
+    os.utime(newer, (2_000_000_000, 2_000_000_000))
+    assert service.load_results()["data"]["summary"] == [2]  # newest file wins, no restart needed
+    os.utime(older, (3_000_000_000, 3_000_000_000))
+    assert service.load_results()["data"]["summary"] == [1]  # and it follows whichever was written last
 
 
 def test_load_results_missing_raises(tmp_path, monkeypatch):

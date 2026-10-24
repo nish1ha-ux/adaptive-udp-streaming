@@ -34,6 +34,8 @@ Accepting a proposal is recorded here as a user decision, but the original sugge
 - `experiments/run_repeats.py`: wrapper that repeats Subham's existing trial runner with seeds 1–5 and reports
   mean and standard deviation. It calls his unmodified `run_single_trial`; it adds no measurement logic.
 - `experiments/run_tuned.py`: searches the rate controller's own threshold settings on tuning seeds (101-103) and re-measures the chosen setting on held-out seeds (1-5). It edits no protocol code, and every grid point is saved in `results/experiment_tuned.json`.
+- `docs/bandwidth_emulator_plan.md`: written plan for a bandwidth-limited emulator link, with tests and a success rule fixed before any run. It is a plan only; the emulator change is for its owner to write.
+- `experiments/run_bottleneck.py`: experiment runner for that link. It stops until the emulator supports the new settings.
 - README sections describing the above.
 
 ## What the AI did not write

@@ -147,11 +147,14 @@ def build_sample(sample_id: str) -> tuple:
 RESULTS_DIR = Path(__file__).resolve().parents[1] / "results"
 # Checked in order; the first file that exists is served. The experiment scripts
 # write these files, so the dashboard always shows whatever they last recorded.
-RESULT_FILES = ("experiment_tuned.json", "experiment_repeats.json")
+RESULT_FILES = ("experiment_bottleneck.json", "experiment_tuned.json", "experiment_repeats.json")
 
 
 def load_results() -> Dict[str, object]:
-    """Read the latest recorded experiment results from disk on every call.
+    """Read the most recently written experiment results file on every call.
+
+    Of the known result files that exist, the one with the newest modification time
+    wins, so the dashboard always shows whatever an experiment script recorded last.
 
     Returns:
         ``{"source": file name, "modified": ISO timestamp, "data": parsed JSON}``.
@@ -159,17 +162,16 @@ def load_results() -> Dict[str, object]:
     Raises:
         TransferError: if no results file exists or the file is not valid JSON.
     """
-    for name in RESULT_FILES:
-        path = RESULTS_DIR / name
-        if not path.is_file():
-            continue
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            raise TransferError(f"Could not read {name}: {exc}") from exc
-        modified = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(path.stat().st_mtime))
-        return {"source": name, "modified": modified, "data": data}
-    raise TransferError("No experiment results found. Run the experiment scripts first.")
+    existing = [RESULTS_DIR / name for name in RESULT_FILES if (RESULTS_DIR / name).is_file()]
+    if not existing:
+        raise TransferError("No experiment results found. Run the experiment scripts first.")
+    path = max(existing, key=lambda p: p.stat().st_mtime)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise TransferError(f"Could not read {path.name}: {exc}") from exc
+    modified = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(path.stat().st_mtime))
+    return {"source": path.name, "modified": modified, "data": data}
 
 
 def _free_udp_port() -> int:
