@@ -87,47 +87,78 @@ Received Data
 
 ## ⚙️ Core Components
 
-<details>
-<summary><b>1. UDP Sender</b></summary>
+<details open>
+<summary><b>1. Packet Format</b> — <code>src/packet.py</code> ✅</summary>
 
-Responsible for reading streaming data, creating packets, maintaining
-sequence numbers and controlling the transmission rate.
+Implemented by **Nishtha Bhushan**.
+
+Custom versioned binary protocol (AUDP v1) with network byte order:
+
+| Offset | Size | Field |
+|--------|------|-------|
+| 0 | 4 | Magic bytes (`AUDP`) |
+| 4 | 1 | Protocol version (1) |
+| 5 | 1 | Packet type (1=DATA, 2=END) |
+| 6 | 4 | Sequence number (uint32) |
+| 10 | 8 | Monotonic timestamp (uint64, nanoseconds) |
+| 18 | 2 | Payload length (uint16) |
+| 20 | 32 | SHA-256 checksum |
+| 52 | N | Payload (0–1400 bytes) |
+
+**Features:** SHA-256 checksum (timing-safe validation via `hmac.compare_digest`), DATA and END packet types, sequence numbers, configurable max payload (1400 bytes), encode/decode round-trip, clear `PacketError` exceptions.
+
+</details>
+
+<details open>
+<summary><b>2. UDP Sender</b> — <code>src/sender.py</code> ✅</summary>
+
+Implemented by **Nishtha Bhushan**.
+
+Reads a file, splits it into sequenced DATA packets, and sends them over UDP with configurable pacing. The END packet embeds the total DATA-packet count so the receiver can verify completeness.
+
+```bash
+python -m src.sender path/to/file.bin --host 127.0.0.1 --port 5005 --interval 0.001
+```
+
+**Features:** Chunked file transmission, SHA-256 file-hash logging, empty-file support, configurable pacing, input validation, structured logging.
+
+> **Note:** Adaptive rate control and retransmission are *not* implemented here — they are assigned to Subham and Prakhar respectively.
+
+</details>
+
+<details open>
+<summary><b>3. UDP Receiver</b> — <code>src/receiver.py</code> ✅</summary>
+
+Implemented by **Nishtha Bhushan**.
+
+Listens on a UDP socket, decodes and validates packets, tracks sequence numbers, handles duplicates, reassembles the stream in order, and detects missing packets.
+
+```bash
+python -m src.receiver --host 127.0.0.1 --port 5005 --output received.bin --timeout 30 --post-end-timeout 5
+```
+
+**Features:** Post-END timeout for late-arriving DATA packets, duplicate detection, out-of-order reassembly, missing-packet reporting, SHA-256 output hash, safe file writing.
+
+> **Limitation:** UDP does not guarantee delivery. If END arrives before delayed DATA packets, the receiver waits up to `--post-end-timeout` seconds for stragglers. If packets are still missing, the transfer fails with a clear error listing the missing sequence numbers.
 
 </details>
 
 <details>
-<summary><b>2. UDP Receiver</b></summary>
+<summary><b>4. Reliability Mechanism</b> — <i>Planned</i></summary>
 
-Receives packets, validates their integrity, detects missing packets,
-sends acknowledgements and reconstructs the stream.
+Assigned to **Prakhar Manish Srivastava**.
 
-</details>
-
-<details>
-<summary><b>3. Packet Format</b></summary>
-
-Each packet contains information required for transmission and
-reliability, including:
-
-- Sequence number
-- Timestamp
-- Payload
-- Checksum
-
-</details>
-
-<details>
-<summary><b>4. Reliability Mechanism</b></summary>
-
-Acknowledgements and retransmissions are used to detect and recover
+Acknowledgements and retransmissions will be used to detect and recover
 from packet loss.
 
 </details>
 
 <details>
-<summary><b>5. Network Emulator</b></summary>
+<summary><b>5. Network Emulator</b> — <i>Planned</i></summary>
 
-The emulator introduces controlled network impairments:
+Assigned to **Subham Kumar Sahu**.
+
+The emulator will introduce controlled network impairments:
 
 - Packet loss
 - Delay
@@ -136,9 +167,11 @@ The emulator introduces controlled network impairments:
 </details>
 
 <details>
-<summary><b>6. Adaptive Rate Control</b></summary>
+<summary><b>6. Adaptive Rate Control</b> — <i>Planned</i></summary>
 
-The sender uses measured network conditions such as packet loss,
+Assigned to **Subham Kumar Sahu**.
+
+The sender will use measured network conditions such as packet loss,
 RTT and jitter to adjust its transmission rate.
 
 </details>
@@ -247,6 +280,22 @@ adaptive-udp-streaming/
 | 6 | Integration & testing |
 | 7 | Experiments & graphs |
 | 8 | Finalization & viva |
+
+---
+
+## 🧪 Running Tests
+
+Install dependencies and run the test suite:
+
+```bash
+pip install -r requirements.txt
+python -m pytest tests/ -v
+```
+
+Test coverage includes:
+
+- **30 packet tests** — round-trips, checksums, malformed/truncated data, unsupported types, oversized payloads, input validation, END-payload encoding.
+- **10 transfer tests** — multi-packet, single-packet, empty-file, exact-boundary transfers, SHA-256 integrity verification, duplicate detection, out-of-order reassembly, timeout behavior, missing-packet detection, sender input validation.
 
 ---
 
