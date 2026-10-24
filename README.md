@@ -295,6 +295,7 @@ Open <http://127.0.0.1:8000>, choose a file (up to 2 MB), pick the reliability m
 
 | Endpoint | Description |
 |---|---|
+| `GET /api/samples` | Predefined test files (empty, note, boundary, article, log, pattern, random) |
 | `GET /api/info` | Protocol constants and upload limit |
 | `GET /api/history` | Recent transfers, newest first |
 | `POST /api/transfer?filename=&arq=&interval=&max_retries=&initial_rto=` | Raw file body; runs a loopback transfer and returns the result |

@@ -56,13 +56,25 @@ export function pairByExperiment(rows) {
  * @param {ReturnType<typeof pairByExperiment>} pairs
  */
 export function compare(pairs) {
+  /** Coefficient of variation: spread relative to the mean (lower = steadier). */
+  const cv = (r) => (r.goodput_kbps ? (r.goodput_kbps_sd ?? 0) / r.goodput_kbps : 0);
   const detail = pairs.map((p) => {
-    const change = (p.adaptive.goodput_kbps - p.fixed.goodput_kbps) / p.fixed.goodput_kbps;
-    const outcome = change > SIMILARITY_BAND ? 'better' : change < -SIMILARITY_BAND ? 'worse' : 'similar';
-    return { name: p.name, change, outcome };
+    const diff = p.adaptive.goodput_kbps - p.fixed.goodput_kbps;
+    const change = diff / p.fixed.goodput_kbps;
+    // A difference only counts if it exceeds both the 5% band and the run-to-run spread.
+    const spread = (p.adaptive.goodput_kbps_sd ?? 0) + (p.fixed.goodput_kbps_sd ?? 0);
+    const real = Math.abs(change) > SIMILARITY_BAND && Math.abs(diff) > spread;
+    const outcome = !real ? 'similar' : diff > 0 ? 'better' : 'worse';
+    return { name: p.name, change, outcome, steadier: cv(p.adaptive) < cv(p.fixed) };
   });
   const count = (o) => detail.filter((d) => d.outcome === o).length;
-  return { detail, better: count('better'), similar: count('similar'), worse: count('worse') };
+  return {
+    detail,
+    better: count('better'),
+    similar: count('similar'),
+    worse: count('worse'),
+    steadier: detail.filter((d) => d.steadier).length,
+  };
 }
 
 /**
@@ -78,11 +90,15 @@ export function verdict(c) {
     return { tone: 'good', title: 'Claim supported in every tested condition', body: `Adaptive goodput beat fixed-rate by more than ${SIMILARITY_BAND * 100}% in all ${total} experiments.` };
   }
   if (c.better === 0 && c.worse > 0) {
-    return { tone: 'bad', title: 'Claim not supported by current data', body: `Adaptive was worse in ${c.worse} of ${total} experiments and better in none.` };
+    return {
+      tone: 'bad',
+      title: 'Claim not supported by the measurements',
+      body: `Adaptive goodput was lower in ${c.worse} of ${total} conditions and higher in none; it was steadier in ${c.steadier} of ${total}.`,
+    };
   }
   return {
     tone: 'warn',
-    title: 'Inconclusive so far',
+    title: 'Mixed result',
     body: `Adaptive was better in ${c.better}, similar in ${c.similar} and worse in ${c.worse} of ${total} experiments on goodput.`,
   };
 }

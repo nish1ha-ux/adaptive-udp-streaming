@@ -58,7 +58,7 @@ function route() {
 
 /* --------------------------------------------------------------- overview */
 
-function renderOverview(team, pairs) {
+function renderOverview(team, pairs, meta) {
   $('course').textContent = `${team.project.course} · ${team.project.track}`;
   $('claim').textContent = `Claim under test: “${team.project.claim}”`;
 
@@ -70,10 +70,10 @@ function renderOverview(team, pairs) {
   const allOk = pairs.every((p) => p.fixed.integrity_verified && p.adaptive.integrity_verified);
   const retx = (mode) => pairs.reduce((n, p) => n + p[mode].retransmissions, 0);
   const kpis = [
-    ['Experiments', String(pairs.length), 'fixed vs. adaptive pairs'],
+    ['Conditions', String(pairs.length), 'fixed vs. adaptive pairs'],
+    ['Repeats', `${meta.repeats} × ${meta.size_kb} KB`, `seeds ${meta.seeds[0]}–${meta.seeds.at(-1)}, same seeds in both modes`],
     ['Integrity', allOk ? 'All pass' : 'Failures', 'SHA-256 match on every run'],
-    ['Retransmissions', `${retx('fixed')} / ${retx('adaptive')}`, 'fixed / adaptive, total'],
-    ['Sample size', `${pairs[0].fixed.packets_sent} pkts`, 'per run, one run each'],
+    ['Mean retransmissions', `${fmt(retx('fixed'), 1)} / ${fmt(retx('adaptive'), 1)}`, 'fixed / adaptive, summed over conditions'],
   ];
   $('kpis').replaceChildren(...kpis.map(([label, value, note]) =>
     h('div', { class: 'kpi' }, h('small', {}, label), h('b', {}, value), h('span', {}, note))));
@@ -85,16 +85,19 @@ function renderOverview(team, pairs) {
   chartFor('chart-goodput', pairs, 'goodput_kbps');
 
   $('limits').textContent =
-    'Read this carefully: each run transfers a very small file once, so differences of a few percent are noise. ' +
-    'The experiment plan calls for larger transfers, seeded repeats and error bars before drawing conclusions.';
+    `Bars show the mean of ${meta.repeats} seeded runs; whiskers are one standard deviation. ` +
+    'Both modes see identical loss patterns for each seed. All transfers run through the project’s own ' +
+    'emulator on one machine, so absolute numbers depend on that machine.';
 }
 
-/** Draw one metric as fixed-vs-adaptive grouped bars. */
+/** Draw one metric as fixed-vs-adaptive grouped bars (with error bars when *_sd exists). */
 function chartFor(id, pairs, key, digits = 1) {
   groupedBars($(id), {
     labels: pairs.map((p) => p.name),
     fixed: pairs.map((p) => p.fixed[key]),
     adaptive: pairs.map((p) => p.adaptive[key]),
+    fixedSd: pairs.map((p) => p.fixed[`${key}_sd`] ?? 0),
+    adaptiveSd: pairs.map((p) => p.adaptive[`${key}_sd`] ?? 0),
     digits,
   });
 }
@@ -113,12 +116,13 @@ function renderExperiments(rows, pairs) {
     ['Loss %', (r) => fmt(r.loss_configured * 100, 1), true],
     ['Delay ms', (r) => fmt(r.base_delay_ms, 0), true],
     ['Jitter ms', (r) => fmt(r.jitter_ms, 0), true],
-    ['Goodput kbps', (r) => fmt(r.goodput_kbps, 1), true],
-    ['Duration s', (r) => fmt(r.duration_s, 3), true],
-    ['Retx', (r) => String(r.retransmissions), true],
-    ['RTT ms', (r) => fmt(r.avg_rtt_ms, 2), true],
-    ['Jitter meas. ms', (r) => fmt(r.avg_jitter_ms, 2), true],
+    ['Goodput kbps', (r) => `${fmt(r.goodput_kbps, 1)} ± ${fmt(r.goodput_kbps_sd ?? 0, 1)}`, true],
+    ['Duration s', (r) => fmt(r.duration_s, 2), true],
+    ['Retx', (r) => fmt(r.retransmissions, 1), true],
+    ['RTT ms', (r) => fmt(r.avg_rtt_ms, 1), true],
+    ['Jitter meas. ms', (r) => fmt(r.avg_jitter_ms, 1), true],
     ['Final rate pps', (r) => fmt(r.final_rate_pps, 1), true],
+    ['Runs', (r) => String(r.repeats ?? 1), true],
     ['Integrity', (r) => (r.integrity_verified ? 'ok' : 'FAIL'), false],
   ];
   fillTable($('table'), cols, rows);
@@ -168,7 +172,7 @@ function renderProtocol() {
 
 /* ---------------------------------------------------------------- credits */
 
-function renderCredits(team) {
+function renderCredits(team, activity) {
   const initials = (name) => name.split(' ').map((p) => p[0]).slice(0, 2).join('');
   const bullets = (list) => h('ul', { class: 'plain' }, ...list.map((t) => h('li', {}, t)));
 
@@ -176,14 +180,24 @@ function renderCredits(team) {
     const link = m.github
       ? h('a', { href: `https://github.com/${m.github}`, rel: 'noopener' }, `@${m.github}`)
       : h('span', { class: 'muted' }, 'GitHub handle not listed');
+    // Commit counts and recent commits are generated from git history (scripts/build_data.py).
+    const log = activity?.members?.[m.name];
+    const recent = log?.recent?.length
+      ? h('ul', { class: 'commit-list' }, ...log.recent.map((c) => h('li', {}, h('code', {}, c.sha), `${c.date} · ${c.subject}`)))
+      : h('p', { class: 'muted' }, 'No commits in the repository yet.');
     return h('article', { class: 'person' },
       h('header', {}, h('span', { class: 'avatar', 'aria-hidden': 'true' }, initials(m.name)),
         h('div', {}, h('h2', {}, m.name), h('div', { class: 'meta' }, `${m.roll} · `, link))),
       h('p', { class: 'role' }, m.role),
-      bullets(m.contributions));
+      bullets(m.contributions),
+      h('div', { class: 'stat' }, h('span', { class: 'count' }, String(log?.commits ?? 0)), 'commits in the repository'),
+      recent);
   }));
 
   $('web').replaceChildren(h('h2', {}, team.web.title), bullets(team.web.contributions));
+  $('activity-note').textContent = activity
+    ? `Commit data generated from git history: ${activity.total_commits} commits across all branches.`
+    : '';
 }
 
 /* ------------------------------------------------------------- live runs */
@@ -216,19 +230,43 @@ function showRunResult(r) {
   $('run-stats').replaceChildren(...rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, String(v))]));
 }
 
+/** Human-readable byte size. */
+const prettySize = (n) => (n >= 1024 ? `${fmt(n / 1024, 0)} KB` : `${n} B`);
+
+/** Fill the predefined-file picker from the backend; the first sample is preselected. */
+async function loadSamples() {
+  const grid = $('sample-grid');
+  try {
+    const samples = await loadJson(`${API_BASE}/api/samples`);
+    grid.replaceChildren(...samples.map((s, i) => h('label', { class: 'sample' },
+      h('input', { type: 'radio', name: 'sample', value: s.id, ...(i === 1 ? { checked: '' } : {}) }),
+      h('span', {}, h('b', {}, s.name), h('small', {}, `${s.description} · ${prettySize(s.size)}`)))));
+    // Picking a sample clears any uploaded file so the choice is never ambiguous.
+    grid.addEventListener('change', () => { $('file').value = ''; });
+  } catch {
+    grid.replaceChildren(h('p', { class: 'muted' }, 'Start the local server to load the sample files.'));
+  }
+}
+
 function initRunForm() {
+  // Choosing an upload deselects the samples.
+  $('file').addEventListener('change', () => {
+    if ($('file').files[0]) document.querySelectorAll('input[name="sample"]').forEach((r) => { r.checked = false; });
+  });
   $('form').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const file = $('file').files[0];
-    if (!file) { setStatus('Choose a file first.'); return; }
+    const sample = document.querySelector('input[name="sample"]:checked')?.value;
+    if (!file && !sample) { setStatus('Choose a test file first.'); return; }
     const params = new URLSearchParams({
-      filename: file.name, arq: $('arq').value, interval: $('interval').value,
+      arq: $('arq').value, interval: $('interval').value,
       max_retries: $('max_retries').value, initial_rto: $('initial_rto').value,
     });
+    if (file) params.set('filename', file.name); else params.set('sample', sample);
     $('go').disabled = true;
     setStatus('Transferring…');
     try {
-      const res = await fetch(`${API_BASE}/api/transfer?${params}`, { method: 'POST', body: file });
+      const res = await fetch(`${API_BASE}/api/transfer?${params}`, { method: 'POST', body: file ?? '' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
       showRunResult(data);
@@ -248,14 +286,21 @@ async function main() {
   initTheme();
   renderProtocol();
   initRunForm();
+  loadSamples();
   window.addEventListener('hashchange', route);
   route();
   try {
-    const [rows, team] = await Promise.all([loadJson('data/results.json'), loadJson('data/team.json')]);
+    // activity.json is optional: the page still works without commit data.
+    const [repeats, team, activity] = await Promise.all([
+      loadJson('data/repeats.json'),
+      loadJson('data/team.json'),
+      loadJson('data/activity.json').catch(() => null),
+    ]);
+    const rows = repeats.summary;
     const pairs = pairByExperiment(rows);
-    renderOverview(team, pairs);
+    renderOverview(team, pairs, repeats.meta);
     renderExperiments(rows, pairs);
-    renderCredits(team);
+    renderCredits(team, activity);
   } catch (err) {
     $('verdict').textContent = `Could not load project data: ${err.message}`;
   }

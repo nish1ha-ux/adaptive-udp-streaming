@@ -90,3 +90,24 @@ def test_static_path_traversal_blocked(base_url):
     with pytest.raises(urllib.error.HTTPError) as exc:
         _get(f"{base_url}/..%2fREADME.md")
     assert exc.value.code == 404
+
+
+def test_samples_are_deterministic_and_sized():
+    from backend.service import SAMPLES, build_sample
+    for sample in SAMPLES:
+        name, data = build_sample(sample.id)
+        assert len(data) == sample.size and name.startswith(sample.id)
+        assert build_sample(sample.id)[1] == data
+
+
+def test_api_samples_and_sample_transfer(base_url):
+    status, body = _get(f"{base_url}/api/samples")
+    ids = [s["id"] for s in json.loads(body)]
+    assert status == 200 and "note" in ids and "empty" in ids
+    status, rec = _post(f"{base_url}/api/transfer?sample=note&interval=0", b"")
+    assert status == 200 and rec["integrity_ok"] and rec["bytes"] == 900
+
+
+def test_api_unknown_sample_rejected(base_url):
+    status, body = _post(f"{base_url}/api/transfer?sample=nope", b"")
+    assert status == 422 and "Unknown sample" in body["error"]

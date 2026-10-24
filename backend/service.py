@@ -11,6 +11,7 @@ The protocol modules (``src.packet``, ``src.sender``, ``src.receiver``,
 """
 
 import hashlib
+import random
 import socket
 import tempfile
 import threading
@@ -77,6 +78,69 @@ def protocol_info() -> Dict[str, object]:
         "max_payload_bytes": MAX_PAYLOAD_SIZE,
         "max_upload_bytes": MAX_UPLOAD_BYTES,
     }
+
+
+@dataclass(frozen=True)
+class Sample:
+    """A predefined test file the UI can send without any upload.
+
+    ``kind`` selects the generator; ``size`` is the exact byte length. Content is
+    deterministic (fixed seed), so repeated runs send identical bytes.
+    """
+
+    id: str
+    name: str
+    description: str
+    kind: str  # "text" | "log" | "pattern" | "random" | "empty"
+    size: int
+
+
+# Sizes are chosen to exercise distinct protocol paths: empty stream, exactly one
+# packet, an exact multiple of the payload size, and larger multi-packet streams.
+SAMPLES = (
+    Sample("empty", "Empty file", "0 bytes · zero DATA packets, only END", "empty", 0),
+    Sample("note", "Short note", "Text · fits in one packet", "text", 900),
+    Sample("boundary", "Packet boundary", "Text · exactly 3 full packets", "text", MAX_PAYLOAD_SIZE * 3),
+    Sample("article", "Text article", "Text · about 10 KB", "text", 10 * 1024),
+    Sample("server-log", "Server log", "Log lines · about 100 KB", "log", 100 * 1024),
+    Sample("pattern", "Byte pattern", "Repeating 0–255 pattern · 250 KB", "pattern", 250 * 1024),
+    Sample("random", "Random binary", "Incompressible bytes · 500 KB", "random", 500 * 1024),
+)
+_SAMPLES_BY_ID = {s.id: s for s in SAMPLES}
+_WORDS = ("packet sequence checksum window timeout acknowledgement stream jitter latency "
+          "retransmit receiver sender datagram buffer socket loss delay rate adaptive").split()
+
+
+def list_samples() -> List[Dict[str, object]]:
+    """Public description of each sample (no file content)."""
+    return [{"id": s.id, "name": s.name, "description": s.description, "size": s.size} for s in SAMPLES]
+
+
+def build_sample(sample_id: str) -> tuple:
+    """Return ``(filename, bytes)`` for a predefined sample.
+
+    Raises:
+        TransferError: if *sample_id* is unknown.
+    """
+    sample = _SAMPLES_BY_ID.get(sample_id)
+    if sample is None:
+        raise TransferError(f"Unknown sample: {sample_id!r}.")
+    rng = random.Random(sample.id)  # string seed -> stable across runs
+    if sample.kind == "empty":
+        data = b""
+    elif sample.kind == "random":
+        data = rng.randbytes(sample.size)
+    elif sample.kind == "pattern":
+        data = (bytes(range(256)) * (sample.size // 256 + 1))[: sample.size]
+    elif sample.kind == "log":
+        lines = (f"2026-10-24T10:{i // 60 % 60:02d}:{i % 60:02d}Z INFO seq={i} rtt={rng.randint(1, 90)}ms "
+                 f"loss={rng.random():.3f}\n" for i in range(sample.size // 10 + 1))
+        data = "".join(lines).encode()[: sample.size]
+    else:
+        text = " ".join(rng.choice(_WORDS) for _ in range(sample.size // 4 + 1))
+        data = text.encode()[: sample.size]
+    ext = "bin" if sample.kind in ("random", "pattern", "empty") else "txt"
+    return f"{sample.id}.{ext}", data
 
 
 def _free_udp_port() -> int:

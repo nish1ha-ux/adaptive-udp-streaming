@@ -5,9 +5,11 @@ Adaptive UDP Streaming — Local Test Server (backend)
 Serves the web front end (``frontend/``) and a small JSON API:
 
     GET  /api/info       protocol constants and upload limit
+    GET  /api/samples    predefined test files (id, name, description, size)
     GET  /api/history    recent transfers (in memory, newest first)
-    POST /api/transfer   raw file body; settings via query string
-                         (?filename=&arq=&interval=&max_retries=&initial_rto=)
+    POST /api/transfer   settings via query string
+                         (?arq=&interval=&max_retries=&initial_rto=) plus either
+                         ?sample=<id> (predefined file) or a raw file body with ?filename=
 
 Usage::
 
@@ -28,6 +30,8 @@ from backend.service import (
     MAX_UPLOAD_BYTES,
     TransferError,
     TransferParams,
+    build_sample,
+    list_samples,
     protocol_info,
     run_transfer,
 )
@@ -66,6 +70,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/api/info":
             self._json(HTTPStatus.OK, protocol_info())
+        elif path == "/api/samples":
+            self._json(HTTPStatus.OK, list_samples())
         elif path == "/api/history":
             self._json(HTTPStatus.OK, HISTORY.list())
         elif path.startswith("/api/"):
@@ -90,8 +96,12 @@ class Handler(BaseHTTPRequestHandler):
         query = dict(parse_qsl(parts.query))
         try:
             params = TransferParams.from_mapping(query)
-            record = run_transfer(query.get("filename", "upload.bin"),
-                                  self.rfile.read(length), params)
+            body = self.rfile.read(length)
+            if "sample" in query:  # predefined file: ignore any request body
+                filename, body = build_sample(query["sample"])
+            else:
+                filename = query.get("filename", "upload.bin")
+            record = run_transfer(filename, body, params)
         except TransferError as exc:
             self._json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(exc)})
             return

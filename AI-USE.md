@@ -30,6 +30,10 @@ Accepting a proposal is recorded here as a user decision, but the original sugge
 - `frontend/`: `index.html`, `styles.css`, `js/app.js`, `js/data.js`, `js/charts.js`.
 - `frontend/data/team.json`: credits text, compiled from the proposal and the repository history.
 - `tests/test_backend.py`: tests for the service and API.
+- Predefined sample files (`SAMPLES` in `backend/service.py`) so a transfer needs no upload; requested by Nishtha.
+- `experiments/run_repeats.py`: wrapper that repeats Subham's existing trial runner with seeds 1–5 and reports
+  mean and standard deviation. It calls his unmodified `run_single_trial`; it adds no measurement logic.
+- `scripts/build_data.py`: builds `frontend/data/activity.json` (commit counts) from `git log`.
 - README sections describing the above.
 
 ## What the AI did not write
@@ -40,8 +44,12 @@ Accepting a proposal is recorded here as a user decision, but the original sugge
 
 ## Notes on the data
 
-The dashboard computes a plain verdict from the measured results. At the time of writing the data is a single
-22-packet run per condition, which is too small to support conclusions; the dashboard says so.
+`results/experiment_repeats.json` was produced by running `experiments/run_repeats.py` against the emulator and
+rate-controller code on `feature/rate-control-and-emulator` (100 KB payload, 5 seeded repeats per condition and mode,
+all SHA-256 checks passing). The dashboard computes its verdict from these numbers. In this run adaptive goodput was
+higher only on the ideal network and clearly lower under impairment, and the dashboard reports that as measured.
+The request to make the claim "get supported" was not implemented by changing results; improving the result would
+mean changing the rate controller, which belongs to its author and is not core code this entry covers.
 
 ## Viva readiness
 

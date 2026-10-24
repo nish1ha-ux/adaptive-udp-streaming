@@ -26,7 +26,7 @@ function niceMax(value) {
 
 /** Shorten "E2 — Mild impairment" to "E2" plus a second line for the label. */
 function splitLabel(label) {
-  const [code, ...rest] = label.split('—').map((s) => s.trim());
+  const [code, ...rest] = label.split(/\s[—-]\s/).map((s) => s.trim());
   return { code, name: rest.join(' ') };
 }
 
@@ -34,12 +34,14 @@ function splitLabel(label) {
  * Draw a grouped bar chart into `container`.
  *
  * @param {HTMLElement} container
- * @param {{labels: string[], fixed: number[], adaptive: number[], digits?: number}} spec
+ * @param {{labels: string[], fixed: number[], adaptive: number[], digits?: number,
+ *          fixedSd?: number[], adaptiveSd?: number[]}} spec  Optional *Sd arrays draw error bars.
  */
-export function groupedBars(container, { labels, fixed, adaptive, digits = 1 }) {
+export function groupedBars(container, { labels, fixed, adaptive, digits = 1, fixedSd = [], adaptiveSd = [] }) {
   const W = 640, H = 300, m = { t: 16, r: 8, b: 48, l: 44 };
   const innerW = W - m.l - m.r, innerH = H - m.t - m.b;
-  const max = niceMax(Math.max(...fixed, ...adaptive));
+  const top = (vals, sds) => vals.map((v, i) => v + (sds[i] ?? 0));
+  const max = niceMax(Math.max(...top(fixed, fixedSd), ...top(adaptive, adaptiveSd)));
   const y = (v) => m.t + innerH - (v / max) * innerH;
   const groupW = innerW / labels.length;
   const barW = Math.min(34, groupW / 3);
@@ -55,10 +57,16 @@ export function groupedBars(container, { labels, fixed, adaptive, digits = 1 }) 
 
   labels.forEach((label, i) => {
     const cx = m.l + groupW * i + groupW / 2;
-    [['fixed', fixed[i], -barW - 2], ['adaptive', adaptive[i], 2]].forEach(([mode, value, dx]) => {
+    [['fixed', fixed[i], -barW - 2, fixedSd[i] ?? 0], ['adaptive', adaptive[i], 2, adaptiveSd[i] ?? 0]].forEach(([mode, value, dx, sd]) => {
       const h = innerH - (y(value) - m.t);
+      const mid = cx + dx + barW / 2;
       svg.append(el('rect', { class: `bar-${mode}`, x: cx + dx, y: y(value), width: barW, height: Math.max(h, 0), rx: 3 }));
-      svg.append(el('text', { class: 'val', x: cx + dx + barW / 2, y: y(value) - 5, 'text-anchor': 'middle' }, Number(value).toLocaleString(undefined, { maximumFractionDigits: digits })));
+      if (sd > 0) {
+        // Error bar: mean ± one standard deviation across repeats.
+        svg.append(el('line', { class: 'err', x1: mid, x2: mid, y1: y(value + sd), y2: y(Math.max(value - sd, 0)) }));
+        svg.append(el('line', { class: 'err', x1: mid - 4, x2: mid + 4, y1: y(value + sd), y2: y(value + sd) }));
+      }
+      svg.append(el('text', { class: 'val', x: mid, y: y(value + sd) - 6, 'text-anchor': 'middle' }, Number(value).toLocaleString(undefined, { maximumFractionDigits: digits })));
     });
     const { code, name } = splitLabel(label);
     svg.append(el('text', { x: cx, y: H - 24, 'text-anchor': 'middle' }, code));

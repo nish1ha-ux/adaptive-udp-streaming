@@ -89,7 +89,14 @@
       </header>
       <div class="card">
         <form id="form" novalidate>
-          <label class="file"><span>File (up to 2 MB)</span><input type="file" id="file" required></label>
+          <fieldset class="samples">
+            <legend>Choose a test file</legend>
+            <div class="sample-grid" id="sample-grid"><p class="muted">Loading samples…</p></div>
+          </fieldset>
+          <details class="own">
+            <summary>Or upload your own file</summary>
+            <label class="file">File (up to 2 MB)<input type="file" id="file"></label>
+          </details>
           <div class="fields">
             <label>Reliability
               <select id="arq"><option value="stop-and-wait">Stop-and-Wait ARQ</option><option value="none">None</option></select>
@@ -113,6 +120,7 @@
       </header>
       <div class="people" id="people"></div>
       <div class="card" id="web"></div>
+      <p class="muted foot" id="activity-note"></p>
     </section>
   </main>
 

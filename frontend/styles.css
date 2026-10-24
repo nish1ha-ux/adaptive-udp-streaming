@@ -120,7 +120,8 @@ main {
 .chart text { fill: var(--muted); font: 11px var(--font-mono); }
 .chart .grid { stroke: var(--line); stroke-width: 1; }
 .chart .bar-fixed { fill: var(--fixed); } .chart .bar-adaptive { fill: var(--adaptive); }
-.chart .val { fill: var(--text); }
+.chart .val { fill: var(--text); font-size: 10px; }
+.chart .err { stroke: var(--text); stroke-width: 1.4; opacity: .75; }
 .legend { display: flex; gap: var(--s4); font-size: .82rem; color: var(--muted); }
 .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; background: var(--c); }
 
@@ -144,6 +145,23 @@ table.data { width: 100%; border-collapse: collapse; font-size: .85rem; }
 /* ---------- Forms ---------- */
 form label { display: block; font-size: .8rem; color: var(--muted); }
 input, select { width: 100%; margin-top: 4px; padding: 10px; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+fieldset.samples { border: 0; padding: 0; margin: 0 0 var(--s3); }
+.samples legend { font-size: .8rem; color: var(--muted); padding: 0; margin-bottom: var(--s2); }
+.sample-grid { display: grid; gap: var(--s2); grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); }
+.sample { position: relative; display: block; cursor: pointer; }
+.sample input { position: absolute; opacity: 0; inset: 0; margin: 0; width: 100%; height: 100%; cursor: pointer; }
+.sample span { display: block; padding: var(--s3); border: 1px solid var(--line); border-radius: 8px; background: var(--bg); min-height: 64px; }
+.sample b { display: block; color: var(--text); font-weight: 600; font-size: .92rem; }
+.sample small { color: var(--muted); font-size: .76rem; }
+.sample input:checked + span { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.sample input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+details.own { margin: var(--s2) 0; color: var(--muted); font-size: .88rem; }
+details.own summary { cursor: pointer; padding: var(--s2) 0; }
+.commit-list { list-style: none; margin: var(--s2) 0 0; padding: 0; display: grid; gap: 2px; font-size: .8rem; color: var(--muted); }
+.commit-list code { margin-right: 6px; }
+.count { font: 650 1.4rem/1 var(--font-mono); color: var(--text); }
+.person .stat { display: flex; gap: var(--s2); align-items: baseline; color: var(--muted); font-size: .8rem; }
+.foot { margin-top: var(--s4); font-size: .8rem; }
 .fields { display: grid; gap: var(--s3); margin: var(--s4) 0; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); }
 .actions { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
 .btn { background: var(--accent); color: var(--accent-ink); border: 0; padding: 11px 20px; border-radius: 8px; font: 600 1rem var(--font-ui); cursor: pointer; min-height: 44px; }
