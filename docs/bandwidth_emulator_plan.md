@@ -3,7 +3,8 @@
 Owner of the change: Subham Kumar Sahu (emulator and rate control)
 Experiment runs and analysis: Sudhanshu Aryan
 Review: Nishtha Bhushan
-Status: plan only. No emulator code has been changed by this document.
+Status: implemented as a test harness in `experiments/bottleneck_link.py` (subclasses of the emulator classes), so
+`src/emulator.py` is untouched. Its owner can still fold the same model into `EmulatorConfig` as described below.
 
 ## 1. Why this is needed
 
@@ -102,8 +103,7 @@ the dashboard.
 
 ## 5. How the results reach the dashboard
 
-`experiments/run_bottleneck.py` is already written. It refuses to run until the emulator accepts `bandwidth_kbps`,
-then writes `results/experiment_bottleneck.json` in the same shape the dashboard already reads. The dashboard picks
+`experiments/run_bottleneck.py` runs the conditions above and writes `results/experiment_bottleneck.json` in the same shape the dashboard already reads. The dashboard picks
 the newest results file on disk, so no front-end change is needed after the run:
 
 ```

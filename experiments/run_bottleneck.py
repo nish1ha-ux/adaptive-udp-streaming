@@ -1,9 +1,8 @@
 """
 Fixed vs. adaptive sending over a bandwidth-limited bottleneck.
 
-Requires the emulator change described in ``docs/bandwidth_emulator_plan.md``:
-``EmulatorConfig`` must accept ``bandwidth_kbps`` and ``queue_packets``. Until it does,
-this script stops with a clear message instead of producing meaningless numbers.
+Uses ``experiments/bottleneck_link.py``, which adds the bandwidth-limited queue on top of
+the existing emulator (``src/emulator.py`` is not modified); see ``docs/bandwidth_emulator_plan.md``.
 
 Conditions, seeds and the success rule are fixed in the plan before any run.
 Writes ``results/experiment_bottleneck.json`` in the shape the dashboard reads
@@ -15,7 +14,6 @@ Usage (repository root, emulator branch with the change checked out)::
 """
 
 import argparse
-import dataclasses
 import json
 import random
 import statistics
@@ -26,7 +24,8 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from experiments.run_experiments import find_free_port
-from src.emulator import EmulatorConfig, UDPRelayServer
+from experiments.bottleneck_link import BottleneckRelay
+from src.emulator import EmulatorConfig
 from src.rate_control import AdaptiveRateController, RateControllerConfig
 from src.receiver import receive_file
 from src.sender import send_file
@@ -46,27 +45,16 @@ METRICS = ("goodput_kbps", "duration_s", "retransmissions", "avg_rtt_ms", "avg_j
            "final_rate_pps", "packets_sent")
 
 
-def require_bandwidth_support() -> None:
-    """Fail early if the emulator does not yet model a bottleneck link."""
-    fields = {f.name for f in dataclasses.fields(EmulatorConfig)}
-    missing = {"bandwidth_kbps", "queue_packets"} - fields
-    if missing:
-        raise SystemExit(
-            f"The emulator has no {', '.join(sorted(missing))} setting yet. "
-            "Implement docs/bandwidth_emulator_plan.md first, then run this script."
-        )
-
-
 def trial(bandwidth_kbps: int, seed: int, mode: str, rate_pps: float, payload: bytes) -> Dict:
     """One transfer through the bottleneck. ``mode`` is 'fixed' or 'adaptive'."""
     with tempfile.TemporaryDirectory(prefix="bneck_") as tmp:
         src, dst = Path(tmp) / "src.bin", Path(tmp) / "dst.bin"
         src.write_bytes(payload)
         relay_port, recv_port = find_free_port(), find_free_port()
-        relay = UDPRelayServer(
+        relay = BottleneckRelay(
             listen_port=relay_port, forward_port=recv_port,
-            config=EmulatorConfig(base_delay_ms=BASE_DELAY_MS, jitter_ms=JITTER_MS, random_seed=seed,
-                                  bandwidth_kbps=bandwidth_kbps, queue_packets=QUEUE_PACKETS),
+            config=EmulatorConfig(base_delay_ms=BASE_DELAY_MS, jitter_ms=JITTER_MS, random_seed=seed),
+            bandwidth_kbps=bandwidth_kbps, queue_packets=QUEUE_PACKETS,
         )
         relay.start()
         thread = threading.Thread(target=receive_file, args=(str(dst),),
@@ -110,7 +98,6 @@ def main() -> None:
     parser.add_argument("--repeats", type=int, default=5)
     parser.add_argument("--results-dir", default="results")
     args = parser.parse_args()
-    require_bandwidth_support()
 
     seeds = list(range(1, args.repeats + 1))
     payload = bytes(random.Random(1337).getrandbits(8) for _ in range(args.size_kb * 1024))
