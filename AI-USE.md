@@ -39,8 +39,9 @@ Accepting a proposal is recorded here as a user decision, but the original sugge
 ## What the AI did not write
 
 - The core protocol: `src/packet.py`, `src/sender.py`, `src/receiver.py`, `src/reliability.py`.
-- The emulator, rate controller and experiment results (Subham's work). `frontend/data/results.json` is a
-  copy of `results/experiment_results.json` from `feature/rate-control-and-emulator`, unmodified.
+- The emulator, rate controller and single-trial runner (Subham's work, on `feature/rate-control-and-emulator`).
+  The result files in `results/` were produced by running that code through the scripts above; the dashboard
+  reads them from disk and does not contain any numbers of its own.
 
 ## Notes on the data
 
