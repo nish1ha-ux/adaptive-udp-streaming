@@ -17,6 +17,7 @@ from typing import Dict, List, Optional
 from src.emulator import EmulatorConfig, UDPRelayServer
 from src.receiver import receive_file
 from src.paced_sender import SenderStats, send_file
+from src.sender import SenderStats, send_file
 
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s [%(levelname)s] %(message)s")
 
