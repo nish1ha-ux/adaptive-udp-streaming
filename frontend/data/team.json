@@ -1,0 +1,71 @@
+{
+  "project": {
+    "title": "Adaptive Transport Protocol for Real-Time Streaming over UDP",
+    "course": "CS-30003 · Coding Assignment 1",
+    "track": "Path B — own proposal",
+    "repository": "https://github.com/nish1ha-ux/adaptive-udp-streaming",
+    "claim": "Adaptive transmission will provide better and more stable streaming performance than fixed-rate UDP under varying conditions.",
+    "summary": "A reliable streaming protocol built directly on UDP sockets. The sender adapts its transmission rate to measured loss, RTT and jitter, and a custom emulator recreates poor network conditions so adaptive and fixed-rate sending can be compared with repeatable experiments.",
+    "highlights": [
+      "Custom AUDP packet format with sequence numbers and SHA-256 checksums",
+      "Acknowledgements, timeout-based retransmission and RTT/RTO estimation",
+      "Network emulator for packet loss, delay and jitter, seeded for repeatability",
+      "Adaptive rate control compared against a fixed-rate baseline",
+      "End-to-end stream reconstruction verified by SHA-256 hash",
+      "Responsive dashboard and local test server for running and presenting the experiments"
+    ]
+  },
+  "members": [
+    {
+      "name": "Nishtha Bhushan",
+      "roll": "24155262",
+      "github": "nish1ha-ux",
+      "role": "UDP communication & packet format",
+      "contributions": [
+        "Designed the AUDP v1 packet format: magic bytes, version, type, sequence number, nanosecond timestamp, payload length",
+        "Implemented SHA-256 checksum validation with a constant-time comparison and strict malformed-packet rejection",
+        "Built the UDP sender: chunking, sequence numbering, pacing and the END packet carrying the packet count",
+        "Built the UDP receiver: out-of-order reassembly, duplicate detection, missing-packet reporting and post-END wait",
+        "Wrote the packet and transfer test suites, including SHA-256 end-to-end integrity checks",
+        "Maintains the repository, README and project documentation"
+      ]
+    },
+    {
+      "name": "Prakhar Manish Srivastava",
+      "roll": "24155862",
+      "github": "Prakhar-Manish-Srivastava",
+      "role": "ACK, retransmission & RTT",
+      "contributions": [
+        "Added the ACK packet type and ACK validation rules",
+        "Implemented the RTT estimator (RFC 6298 smoothing, Karn's algorithm, exponential back-off)",
+        "Implemented the Stop-and-Wait ARQ controller with timeouts and a retry limit",
+        "Integrated ARQ into the sender and receiver, including the acknowledged END handshake and receiver linger",
+        "Wrote the ARQ transfer and reliability tests (lost data, lost ACK, duplicates, retry exhaustion)"
+      ]
+    },
+    {
+      "name": "Subham Kumar Sahu",
+      "roll": "2405612",
+      "github": "subhamkumarsahu929",
+      "role": "Adaptive rate control & network emulator",
+      "contributions": [
+        "Built the network emulator: seeded packet loss, fixed delay and jitter",
+        "Implemented the rule-based adaptive rate controller driven by RTT, jitter and loss",
+        "Integrated adaptive and fixed-rate modes into the sender and receiver",
+        "Produced the first experiment suite and result files (E1–E4, fixed vs. adaptive)",
+        "Wrote the emulator, rate-control and end-to-end tests and the architecture guide"
+      ]
+    },
+    {
+      "name": "Sudhanshu Aryan",
+      "roll": "24052189",
+      "github": null,
+      "role": "Testing, experiments & analysis",
+      "contributions": [
+        "Planned: repeatable experiment matrix with seeded runs and repeats",
+        "Planned: goodput, latency, jitter, loss and retransmission graphs with variability",
+        "Planned: written analysis of the claim, including conditions where fixed-rate wins"
+      ]
+    }
+  ]
+}
