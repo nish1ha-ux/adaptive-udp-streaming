@@ -62,7 +62,6 @@ def receive_file(
     linger_timeout=1.0,
     send_ack=None,
     expected_packets=None,
-    send_ack=True,
 ):
     """Listen for incoming packets, send ACKs, and reconstruct the file.
 
