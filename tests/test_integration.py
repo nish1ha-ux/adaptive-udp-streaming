@@ -8,7 +8,7 @@ import pytest
 
 from src.emulator import EmulatorConfig, UDPRelayServer
 from src.receiver import receive_file
-from src.sender import send_file
+from src.paced_sender import send_file
 from src.rate_control import AdaptiveRateController, RateControllerConfig, RateControlMode
 
 

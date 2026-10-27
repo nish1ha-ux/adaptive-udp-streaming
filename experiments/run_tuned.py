@@ -38,7 +38,7 @@ from experiments.run_experiments import EXPERIMENTS, find_free_port
 from src.emulator import EmulatorConfig, UDPRelayServer
 from src.rate_control import AdaptiveRateController, RateControllerConfig
 from src.receiver import receive_file
-from src.sender import send_file
+from src.paced_sender import send_file
 
 TUNE_SEEDS = (101, 102, 103)
 EVAL_SEEDS = (1, 2, 3, 4, 5)

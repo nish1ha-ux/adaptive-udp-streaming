@@ -48,6 +48,9 @@ from src.reliability import StopAndWaitReceiver
 
 logger = logging.getLogger(__name__)
 
+# Modes in which the receiver sends ACK datagrams back to the sender.
+ACKING_MODES = ("stop-and-wait", "selective")
+
 
 def receive_file(
     output_path,
@@ -57,8 +60,8 @@ def receive_file(
     post_end_timeout=5.0,
     arq="stop-and-wait",
     linger_timeout=1.0,
+    send_ack=None,
     expected_packets=None,
-    send_ack=True,
 ):
     """Listen for incoming packets, send ACKs, and reconstruct the file.
 
@@ -68,8 +71,12 @@ def receive_file(
         port:             Local UDP port to bind.
         timeout:          Seconds to wait for packets before giving up.
         post_end_timeout: Seconds to wait after END for delayed DATA packets.
-        arq:              Reliability mode: 'stop-and-wait' (default) or 'none'.
+        arq:              Reliability mode: 'stop-and-wait' (default), 'selective' (ACK every valid
+                          DATA packet by its own sequence number, for the paced adaptive sender)
+                          or 'none'.
         linger_timeout:   Seconds to linger after completion to resend lost END ACKs.
+        send_ack:         Compatibility switch used by the paced sender and its experiments:
+                          True selects 'selective', False selects 'none'. Overrides *arq*.
 
     Returns:
         dict with keys ``total_bytes``, ``total_packets``,
@@ -86,10 +93,12 @@ def receive_file(
         raise ValueError(f"Post-END timeout cannot be negative, got {post_end_timeout!r}.")
     if linger_timeout < 0:
         raise ValueError(f"Linger timeout cannot be negative, got {linger_timeout!r}.")
-    if not send_ack:
-        arq = "none"
-    if arq not in ("stop-and-wait", "none"):
-        raise ValueError(f"Unsupported ARQ mode: {arq!r}. Valid modes are 'stop-and-wait' and 'none'.")
+    if send_ack is not None:
+        arq = "selective" if send_ack else "none"
+    if arq not in ("stop-and-wait", "selective", "none"):
+        raise ValueError(
+            f"Unsupported ARQ mode: {arq!r}. Valid modes are 'stop-and-wait', 'selective' and 'none'."
+        )
 
     received: dict[int, bytes] = {}
     duplicates: int = 0
@@ -150,7 +159,7 @@ def receive_file(
                 if pkt.sequence_number in received:
                     duplicates += 1
                     logger.debug("Duplicate DATA seq=%d from %s (ignored, resending ACK)", pkt.sequence_number, address)
-                    if arq == "stop-and-wait":
+                    if arq in ACKING_MODES:
                         ack_pkt = create_ack_packet(pkt.sequence_number, timestamp_ns=pkt.timestamp_ns)
                         sock.sendto(encode_packet(ack_pkt), address)
                     continue
@@ -173,8 +182,10 @@ def receive_file(
                         ack_pkt = create_ack_packet(ack_to_send, timestamp_ns=pkt.timestamp_ns)
                         sock.sendto(encode_packet(ack_pkt), address)
                         logger.debug("Sent ACK seq=%d to %s", ack_to_send, address)
-                elif arq == "none":
-                    pass
+                elif arq == "selective":
+                    ack_pkt = create_ack_packet(pkt.sequence_number, timestamp_ns=pkt.timestamp_ns)
+                    sock.sendto(encode_packet(ack_pkt), address)
+                    logger.debug("Sent selective ACK seq=%d to %s", pkt.sequence_number, address)
 
                 logger.info(
                     "DATA seq=%d %d bytes (buffered %d)",
@@ -183,7 +194,7 @@ def receive_file(
 
                 # If END arrived earlier, check if stream is now complete and send END ACK.
                 if end_received and expected_packets is not None and len(received) >= expected_packets:
-                    if arq == "stop-and-wait":
+                    if arq in ACKING_MODES:
                         end_ack = create_ack_packet(expected_packets, timestamp_ns=pkt.timestamp_ns)
                         sock.sendto(encode_packet(end_ack), address)
                         logger.info("Sent deferred ACK for END seq=%d to %s", expected_packets, address)
@@ -194,7 +205,7 @@ def receive_file(
                 if end_received:
                     logger.debug("Duplicate END packet received from %s.", address)
                     if (
-                        arq == "stop-and-wait"
+                        arq in ACKING_MODES
                         and expected_packets is not None
                         and len(received) >= expected_packets
                     ):
@@ -215,7 +226,7 @@ def receive_file(
 
                 if len(received) >= expected_packets:
                     # All DATA packets already received; acknowledge END immediately.
-                    if arq == "stop-and-wait":
+                    if arq in ACKING_MODES:
                         end_ack = create_ack_packet(pkt.sequence_number, timestamp_ns=pkt.timestamp_ns)
                         sock.sendto(encode_packet(end_ack), address)
                         logger.info("Sent ACK for END packet (seq=%d) to %s", pkt.sequence_number, address)
@@ -262,7 +273,7 @@ def receive_file(
         # --- Linger Policy ----------------------------------------------------
         # Linger briefly to absorb retransmitted END packets in case final ACK was dropped.
         if (
-            arq == "stop-and-wait"
+            arq in ACKING_MODES
             and linger_timeout > 0
             and last_sender_address is not None
             and expected_packets is not None
@@ -326,7 +337,7 @@ def main():
         help="Extra seconds to wait after END for delayed DATA (default: 5)",
     )
     parser.add_argument(
-        "--arq", choices=["stop-and-wait", "none"], default="stop-and-wait",
+        "--arq", choices=["stop-and-wait", "selective", "none"], default="stop-and-wait",
         help="Reliability mechanism (default: stop-and-wait)",
     )
     parser.add_argument(
