@@ -14,7 +14,7 @@ Serves the web front end (``frontend/``) and a small JSON API:
 
 Usage::
 
-    python -m backend.server --port 8000
+    python -m backend.server --port 8080
 """
 
 import argparse
@@ -126,7 +126,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-5s  %(message)s")
     parser = argparse.ArgumentParser(description="Adaptive UDP Streaming local test server")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--port", type=int, default=8080)
     args = parser.parse_args()
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
     logger.info("Serving on http://%s:%d", args.host, args.port)

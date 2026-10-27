@@ -305,10 +305,10 @@ frontend/ (browser)  ──HTTP/JSON──▶  backend/  ──imports──▶ 
 
 ```bash
 pip install -r requirements.txt
-python -m backend.server --port 8000
+python -m backend.server --port 8080
 ```
 
-Open <http://127.0.0.1:8000>. Pages:
+Open <http://127.0.0.1:8080>. Pages:
 
 | Page | Shows |
 |---|---|
