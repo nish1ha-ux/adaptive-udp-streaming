@@ -52,7 +52,7 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _start_receiver(port, output, timeout=10, post_end_timeout=3):
+def _start_receiver(port, output, timeout=10, post_end_timeout=3, arq="stop-and-wait"):
     """Start the receiver as a subprocess and return the Popen handle."""
     return subprocess.Popen(
         [
@@ -62,6 +62,7 @@ def _start_receiver(port, output, timeout=10, post_end_timeout=3):
             "--output", str(output),
             "--timeout", str(timeout),
             "--post-end-timeout", str(post_end_timeout),
+            "--arq", arq,
         ],
         cwd=ROOT,
         stdout=subprocess.PIPE,
@@ -251,11 +252,16 @@ class TestDuplicateAndReorder:
 
     def test_duplicate_packets_ignored(self, tmp_path):
         """Sending the same DATA packet twice should not corrupt
-        the output."""
+        the output.
+
+        This test injects raw UDP packets without implementing the
+        stop-and-wait ACK handshake, so the receiver runs in baseline
+        'none' mode.
+        """
         destination = tmp_path / "received.bin"
         port = _free_port()
 
-        receiver = _start_receiver(port, destination)
+        receiver = _start_receiver(port, destination, arq="none")
 
         try:
             time.sleep(0.5)
@@ -285,11 +291,16 @@ class TestDuplicateAndReorder:
 
     def test_out_of_order_reassembly(self, tmp_path):
         """Packets arriving out of order should still be reassembled
-        in the correct sequence."""
+        in the correct sequence.
+
+        This test injects raw UDP packets without implementing the
+        stop-and-wait ACK handshake, so the receiver runs in baseline
+        'none' mode.
+        """
         destination = tmp_path / "received.bin"
         port = _free_port()
 
-        receiver = _start_receiver(port, destination)
+        receiver = _start_receiver(port, destination, arq="none")
 
         try:
             time.sleep(0.5)
